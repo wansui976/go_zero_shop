@@ -1,0 +1,24 @@
+# User RPC 配置
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-rpc-config
+  namespace: go-zero-shop
+data:
+  user.yaml: |
+    Name: user.rpc
+    ListenOn: 0.0.0.0:8080
+    Etcd:
+      Hosts:
+      - etcd:2379
+      Key: user.rpc
+
+    Mysql:
+      DataSource: root:123456@tcp(mysql:3306)/user?charset=utf8mb4&parseTime=true&loc=Local
+
+    CacheRedis:
+      - Host: redis:6379
+        Pass:
+        Type: node
+
+    Salt: "go-zero-user-salt"

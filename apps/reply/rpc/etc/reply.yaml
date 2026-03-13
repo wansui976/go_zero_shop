@@ -1,0 +1,13 @@
+Name: reply.rpc
+ListenOn: 0.0.0.0:8083
+Etcd:
+  Hosts:
+  - 127.0.0.1:2379
+  Key: reply.rpc
+
+DataSource: root:@tcp(127.0.0.1:3306)/reply?charset=utf8mb4&parseTime=true&loc=Local
+
+CacheRedis:
+  - Host: 127.0.0.1:6379
+    Pass:
+    Type: node

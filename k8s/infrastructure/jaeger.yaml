@@ -1,0 +1,70 @@
+# Jaeger Configuration for go-zero-shop
+# 分布式链路追踪配置
+
+# Collector 配置
+collector:
+  port: 14268
+  # Collector HTTP 端口（用于接收 Tracer 直接发送的 Span）
+  http_port: 14268
+  # Collector gRPC 端口（用于接收 jaeger-agent 发送的 Span）
+  grpc_port: 14250
+
+# Query 配置
+query:
+  base_path: /jaeger
+  port: 16686
+  # 访问地址：http://jaeger:16686
+
+# Storage 配置
+storage:
+  type: elasticsearch  # 使用 Elasticsearch 作为后端存储
+  elasticsearch:
+    server_urls: http://elasticsearch:9200
+    index_prefix: jaeger
+    # 索引配置
+    index_date_format: "2006-01-02"
+    # 批量写入配置
+    bulk_size: 5000
+    # ES 索引分片数
+    num_shards: 3
+    num_replicas: 1
+
+# Sampling 配置
+sampler:
+  type: const  # 采样策略：const（固定采样）
+  param: 1     # 1 表示采样所有请求，0 表示不采样
+  # 线上环境可以改为 rate Limiting，每秒最多采样 100 个
+  # type: rateLimiting
+  # param: 100
+
+# Agent 配置（可选，用于 sidecar 模式）
+agent:
+  reporter:
+    # Collector 地址
+    collector_endpoint: http://jaeger-collector:14268
+    # 批量报告配置
+    max_queue_size: 10000
+    # 批量报告间隔（毫秒）
+    flush_interval: 1000
+  # 接收 Span 的 UDP 端口
+  http_server_port: 5778
+
+# 日志配置
+log:
+  level: info
+
+# 服务标签
+tags:
+  - key: cluster
+    value: go-zero-shop
+  - key: env
+    value: production
+
+# UI 配置
+ui:
+  # 开启链路搜索功能
+  search_enabled: true
+  # 链路最大显示数量
+  max_find_traces: 1000
+  # 默认时间范围（小时）
+  default_lookup_range: 24

@@ -1,0 +1,31 @@
+# API Gateway 配置
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-gateway-config
+  namespace: go-zero-shop
+data:
+  api-api.yaml: |
+    Name: api-api
+    Host: 0.0.0.0
+    Port: 8888
+    JwtAuth:
+      AccessSecret: "your-secret-key-here-please-change-in-production"
+      AccessExpire: 604800
+    OrderRPC:
+      Endpoints:
+        - order-rpc:8082
+    ProductRPC:
+      Endpoints:
+        - product-rpc:8081
+
+    UserRPC:
+      Endpoints:
+        - user-rpc:8080
+
+    ReplyRPC:
+      Endpoints:
+        - reply-rpc:8083
+
+    DTM:
+      ServerAddr: "dtm:36790"

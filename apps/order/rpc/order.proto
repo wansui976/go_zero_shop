@@ -1,0 +1,182 @@
+syntax = "proto3";
+
+package order;
+option go_package = "./order";
+
+// =======================================
+// Order Service
+// =======================================
+service OrderService {
+
+  // 查询订单列表
+  rpc Orders(OrdersRequest) returns (OrdersResponse);
+
+  // 查询订单详情
+  rpc GetOrderById(GetOrderByIdRequest) returns (GetOrderByIdResponse);
+
+  // 普通下单（可选择是否走 DTM）
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+
+  // 订单回滚（普通下单失败兜底）
+  rpc RollbackOrder(CreateOrderRequest) returns (CreateOrderResponse);
+
+  // 正式取消订单（用于超时未支付等场景）
+  rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
+
+  // -----------------------
+  // DTM 分布式事务接口
+  // -----------------------
+
+  // Try：创建半成品订单
+  rpc CreateOrderDTM(AddOrderRequest) returns (AddOrderResponse);
+
+  // Confirm：确认订单（扣库存 + 改状态）
+  rpc CreateOrderDTMConfirm(CreateOrderDTMConfirmRequest) returns (CreateOrderDTMConfirmResponse);
+
+  // Cancel：回滚订单
+  rpc CreateOrderDTMRevert(AddOrderRequest) returns (AddOrderResponse);
+}
+
+// =======================================
+// Cursor 分页请求
+// =======================================
+enum OrderStatus {
+  OrderStatusCanceled   = 0;  // 已取消
+  OrderStatusPending    = 1;  // 待支付
+  OrderStatusPaid       = 2;  // 已支付
+  OrderStatusDelivering = 3;  // 待发货
+  OrderStatusShipped    = 4;  // 已发货
+  OrderStatusReceived   = 5;  // 待收货
+  OrderStatusCompleted  = 6;  // 已完成
+  OrderStatusRefunding  = 7;  // 退款中
+  OrderStatusRefunded   = 8;  // 已退款
+}
+message OrdersRequest {
+  int64 user_id       = 1;  // 用户ID
+  OrderStatus status  = 2;  // 订单状态（见 OrderStatus 枚举：0=已取消,1=待支付,2=已支付,...）
+}
+
+// 分页响应
+message OrdersResponse {
+  repeated int64 orderIds = 1;
+}
+
+message OrderProductItem {
+  int64 product_id = 1;
+  int64 quantity   = 2;
+}
+
+// 公共：订单基础信息
+message OrderBase {
+  int64 id = 1;
+  string order_id = 2;
+  int64 user_id = 3;
+  OrderStatus status = 4;
+  int64 create_time = 5;
+  int64 update_time = 6;
+}
+
+// 公共：收货地址信息
+message ReceiverInfo {
+  string receiver_name = 1;
+  string receiver_phone = 2;
+  string receiver_address = 3;
+}
+
+
+
+
+
+message OrderDetail {
+  OrderBase base = 1; // 基础信息
+  repeated OrderProductItem products = 2; // 商品列表
+  ReceiverInfo receiver = 3; // 收货地址
+  int64 payment_amount = 4; // 支付金额（分）
+  PaymentType payment_type = 5; // 支付类型
+  
+}
+// =======================================
+// 查询订单详情
+// =======================================
+message GetOrderByIdRequest {
+  int64 id = 1;
+}
+
+message GetOrderByIdResponse {
+  OrderDetail order = 1;
+}
+
+enum PaymentType {
+  PAYMENT_UNKNOWN = 0; // 默认值
+  PAYMENT_WECHAT = 1;  // 微信支付
+  PAYMENT_ALIPAY = 2;  // 支付宝支付
+}
+
+// =======================================
+// 普通下单接口
+// =======================================
+message CreateOrderRequest {
+  int64 user_id = 1;
+  repeated OrderProductItem items = 2; // 多商品下单
+  int64 address_id = 3;
+  bool use_dtm = 4; // 是否走分布式事务
+}
+
+message CreateOrderResponse {
+  string order_id = 1;
+  bool success    = 2;
+  string message  = 3;
+}
+
+message CancelOrderRequest {
+  int64 id = 1;
+  string operator = 2;
+  string reason = 3;
+}
+
+message CancelOrderResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// =======================================
+// DTM：Try
+// =======================================
+message AddOrderRequest {
+  int64 user_id = 1;
+  repeated OrderProductItem items = 2;
+  int64 address_id = 4;
+  string gid = 5;
+  int64  PaymentType = 6;
+}
+
+message AddOrderResponse {
+  string order_id = 1;
+ }
+
+// =======================================
+// DTM：Confirm
+// =======================================
+message CreateOrderDTMConfirmRequest {
+  string order_id = 1;
+  string gid = 2;
+}
+
+message CreateOrderDTMConfirmResponse {
+  bool success = 1;
+}
+
+// =======================================
+// DTM：Cancel
+// =======================================
+message CreateOrderDTMRevertRequest {
+  string order_id = 1;
+  int64 user_id   = 2;
+  string gid = 3;
+}
+
+message CreateOrderDTMRevertResponse {
+  bool success = 1;
+}
+
+//goctl rpc protoc order.proto --go_out=. --go-grpc_out=. --zrpc_out=.

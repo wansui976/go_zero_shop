@@ -1,0 +1,157 @@
+syntax = "proto3";
+
+package user;
+
+option go_package = "./user";
+
+message UserInfo{
+    uint64 Id = 1;
+    string Username = 2;
+    string Password = 3; //MD5加密
+    string phone = 4;
+    string Question = 5; //找回密码问题
+    string Answer = 6;  //找回密码答案
+    int64 CreateTime = 7; 
+    int64 UpdateTime = 8;
+    string IntroduceSign = 9;
+}
+
+//用户登录
+message LoginRequest{
+    string Username = 1;
+    string Password = 2;
+}
+
+message LoginResponse{
+    int64 Id = 1;
+    string Username = 2;
+    string Phone = 3;
+}
+
+//用户信息
+message UserInfoRequest{
+    int64 Id = 1;
+}
+
+message UserInfoResponse{
+    UserInfo user = 1;
+}
+
+//添加用户收货地址
+message UserReceiveAddressAddRequest{
+    int64 Uid = 1;
+    string Name = 2;
+    string Phone = 3;
+    int32 IsDefault = 4; //是否为默认地址。
+    string Province = 5;   //省份/直辖市
+    string City = 6;
+    string Region =7; //区
+    string DetailAddress = 8;
+
+}
+
+message UserReceiveAddressAddResponse{
+
+}
+
+//获取收货地址列表
+message UserReceiveAddressListRequest{
+    int64 uid = 1;
+}
+
+message UserReceiveAddressListResponse{
+    repeated UserReceiveAddress list = 1;
+}
+
+message    UserReceiveAddress {
+  int64 id = 1;
+  int64  uid = 2;   //uid
+  string Name = 3;     //收货人名称
+  string Phone = 4;       //手机号
+  int32  IsDefault = 5;   //是否为默认地址
+  string Province = 6;   //省份/直辖市
+  string City = 7;        //城市
+  string Region = 8;         //区
+  string DetailAddress = 9;  //详细地址(街道)
+  int32 IsDelete = 10;
+  int64 CreateTime = 11;
+  int64 UpdateTime = 12;
+}
+
+//更新
+message    UserReceiveAddressEditRequest {
+  int64  Id = 1;
+  string Name = 2;   //收货人名称
+  string Phone = 3;   //手机号
+  uint32 IsDefault = 4;   //是否为默认地址
+  string Province = 5;   //省份/直辖市
+  string City = 6;   //城市
+  string Region = 7;   //区
+  string DetailAddress = 8;   //详细地址(街道)
+  int64 Uid = 9; //用户 Id
+}
+
+message UserReceiveAddressEditResponse {
+
+}
+
+message    UserReceiveAddressDelRequest {
+  int64 Id = 1;
+}
+message UserReceiveAddressDelResponse {
+}
+
+//添加收藏
+message UserCollectionAddRequest{
+    int64 uid = 1;
+    int64 ProductId = 2;
+}
+
+message UserCollectionAddResponse{
+
+}
+
+// 删除收藏
+message UserCollectionDelRequest {
+  int64   Id = 1;               // 收藏Id
+}
+message UserCollectionDelResponse{}
+// 删除收藏
+
+// 收藏列表
+message UserCollectionListRequest {
+  int64   Uid = 1;              // 用户id
+}
+message UserCollectionListResponse {
+  repeated int64 ProductId = 1; // 商品id
+}
+// 收藏列表
+
+message    UserReceiveAddressInfoRequest {
+  int64 Id = 1;
+}
+
+service User {
+  //登录
+  rpc Login(LoginRequest) returns(LoginResponse);
+  //获取用户信息
+  rpc UserInfo(UserInfoRequest) returns(UserInfoResponse);
+  //添加收获地址
+  rpc addUserReceiveAddress(UserReceiveAddressAddRequest) returns(UserReceiveAddressAddResponse);
+  //编辑收获地址
+  rpc editUserReceiveAddress(UserReceiveAddressEditRequest) returns(UserReceiveAddressEditResponse);
+  //删除收获地址
+  rpc delUserReceiveAddress(UserReceiveAddressDelRequest) returns(UserReceiveAddressDelResponse);
+  //获取收获地址列表
+  rpc getUserReceiveAddressList(UserReceiveAddressListRequest) returns(UserReceiveAddressListResponse);
+
+  // 添加收藏
+  rpc addUserCollection(UserCollectionAddRequest) returns(UserCollectionAddResponse);
+  // 删除收藏
+  rpc delUserCollection(UserCollectionDelRequest) returns(UserCollectionDelResponse);
+  // 收藏列表
+  rpc getUserCollectionList(UserCollectionListRequest) returns(UserCollectionListResponse);
+  //根据主键id,查询收获地址
+  rpc getUserReceiveAddressInfo(UserReceiveAddressInfoRequest) returns(UserReceiveAddress);
+}
+

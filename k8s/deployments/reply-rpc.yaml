@@ -1,0 +1,68 @@
+# Reply RPC 服务部署
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reply-rpc
+  namespace: go-zero-shop
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: reply-rpc
+  template:
+    metadata:
+      labels:
+        app: reply-rpc
+    spec:
+      containers:
+      - name: reply-rpc
+        image: go-zero-shop/reply-rpc:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8083
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        volumeMounts:
+        - name: config
+          mountPath: /app/etc
+          readOnly: true
+        livenessProbe:
+          tcpSocket:
+            port: 8083
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 8083
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: config
+        configMap:
+          name: reply-rpc-config
+      initContainers:
+      - name: wait-for-etcd
+        image: busybox:1.28
+        command: ['sh', '-c', 'until nc -z etcd 2379; do echo waiting for etcd; sleep 2; done;']
+      - name: wait-for-mysql
+        image: busybox:1.28
+        command: ['sh', '-c', 'until nc -z mysql 3306; do echo waiting for mysql; sleep 2; done;']
+      - name: wait-for-redis
+        image: busybox:1.28
+        command: ['sh', '-c', 'until nc -z redis 6379; do echo waiting for redis; sleep 2; done;']
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reply-rpc
+  namespace: go-zero-shop
+spec:
+  selector:
+    app: reply-rpc
+  ports:
+  - port: 8083
+    targetPort: 8083
+  type: ClusterIP

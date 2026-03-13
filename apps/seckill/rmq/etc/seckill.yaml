@@ -1,0 +1,19 @@
+Kafka:
+  Name: seckill_msg,
+  Brokers:
+    - 127.0.0.1:9092
+  Topic: seckill-topic
+  Group: seckill-group
+ProductRPC:
+  Etcd:
+    Hosts:
+      - 127.0.0.1:2379
+    Key: product.rpc
+OrderRPC:
+  Etcd:
+    Hosts:
+      - 127.0.0.1:2379
+    Key: order.rpc
+    
+# 开发环境示例（本地DTM+etcd）
+DtmServer: "etcd://localhost:2379/dtmservice"

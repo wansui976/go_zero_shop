@@ -1,0 +1,91 @@
+# 第一部分：有状态副本集 (StatefulSet)
+# 作用：etcd 需要稳定的网络标识和存储，StatefulSet 确保 Pod 重启后主机名（如 etcd-0）保持不变。
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: etcd
+  namespace: go-zero-shop
+  labels:
+    app: etcd
+spec:
+  serviceName: etcd-service      # 绑定对应的 Headless Service 名称
+  replicas: 1                    # 开发环境下设为 1，生产环境下通常建议 3 或 5 个实现高可用
+  selector:
+    matchLabels:
+      app: etcd
+  template:
+    metadata:
+      labels:
+        app: etcd
+    spec:
+      containers:
+        - name: etcd
+          image: bitnami/etcd:3.5 # 使用 Bitnami 优化的 etcd 镜像
+          ports:
+            - containerPort: 2379 # 客户端交互端口（API 访问）
+              name: client
+            - containerPort: 2380 # 集群节点间通信端口（数据同步）
+              name: peer
+          env:
+            # 安全配置
+            - name: ALLOW_NONE_AUTHENTICATION
+              value: "yes"        # 开发环境允许无认证（注意：生产环境必须设为 no 并配置 RBAC）
+            
+            # 节点配置
+            - name: ETCD_NAME
+              value: "etcd-0"     # 定义节点名称
+            
+            # 客户端访问配置
+            - name: ETCD_ADVERTISE_CLIENT_URLS
+              value: "http://etcd-service:2379" # 告知客户端通过此 URL 访问 etcd
+            - name: ETCD_LISTEN_CLIENT_URLS
+              value: "http://0.0.0.0:2379"      # 节点监听所有网卡上的客户端请求
+            
+            # 集群内部通信配置
+            - name: ETCD_INITIAL_ADVERTISE_PEER_URLS
+              value: "http://etcd-0:2380"       # 告知集群其他节点通过此 URL 进行同步
+            - name: ETCD_LISTEN_PEER_URLS
+              value: "http://0.0.0.0:2380"      # 节点监听所有网卡上的对等节点请求
+          
+          resources:               # 资源限制，etcd 对内存和磁盘 IO 比较敏感
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          
+          # 就绪探针：通过 etcdctl 检查端点健康状况
+          readinessProbe:
+            exec:
+              command: ["etcdctl", "endpoint", "health"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          
+          # 存活探针：如果检查失败，K8s 将重启容器
+          livenessProbe:
+            exec:
+              command: ["etcdctl", "endpoint", "health"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+
+---
+# 第二部分：服务暴露 (Service)
+# 作用：为 go-zero 等服务发现组件提供稳定的访问地址。
+apiVersion: v1
+kind: Service
+metadata:
+  name: etcd-service
+  namespace: go-zero-shop
+spec:
+  type: ClusterIP          # 集群内部访问模式
+  ports:
+    - port: 2379           # 供 go-zero 服务发现/配置中心使用
+      targetPort: 2379
+      name: client
+    - port: 2380           # 供 etcd 集群内部数据同步使用
+      targetPort: 2380
+      name: peer
+  selector:
+    app: etcd              # 流量转发到带有 app: etcd 标签的 Pod

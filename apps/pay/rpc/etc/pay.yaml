@@ -1,0 +1,51 @@
+Name: pay.rpc
+ListenOn: 0.0.0.0:8085
+
+Etcd:
+  Hosts:
+  - 127.0.0.1:2379
+  Key: pay.rpc
+  Mode: dev
+
+OrderRpc:
+  Etcd:
+    Hosts:
+      - 127.0.0.1:2379
+    Key: order.rpc
+
+DataSource: root:@tcp(127.0.0.1:3306)/pay?charset=utf8mb4&parseTime=true&loc=Local
+
+CacheRedis:
+  - Host: 127.0.0.1:6379
+    Pass:
+    Type: node
+
+BizRedis:
+  Host: 127.0.0.1:6379
+  Pass:
+  Type: node
+
+Snowflake:
+  NodeID: 2  # 与其他服务不同
+
+# 微信支付配置
+WechatPay:
+  AppID: "your-wechat-app-id"
+  MchID: "your-merchant-id"
+  ApiKey: "your-api-key"
+  NotifyURL: "http://your-domain.com/api/pay/wechat-callback"
+  TradeType: "NATIVE"
+
+# 支付宝配置
+Alipay:
+  AppID: "your-alipay-app-id"
+  PrivateKey: "your-private-key"
+  PublicKey: "alipay-public-key"
+  NotifyURL: "http://your-domain.com/api/pay/alipay-callback"
+  ReturnURL: "http://your-domain.com/pay/return"
+
+Telemetry:
+  Name: pay-rpc
+  Endpoint: http://jaeger:14268/api/traces
+  Sampler: 1.0
+  Batcher: jaeger

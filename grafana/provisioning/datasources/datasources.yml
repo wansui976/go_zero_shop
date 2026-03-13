@@ -1,0 +1,49 @@
+# Grafana Datasources Configuration
+# 自动配置数据源
+
+apiVersion: 1
+
+datasources:
+  # ==================== Prometheus 数据源 ====================
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      httpMethod: GET
+      # 告警配置
+      alertmanager:
+        name: Alertmanager
+        apiVersion: v2
+    # 认证信息（如果有）
+    # basicAuth: true
+    # basicAuthUser: admin
+    # secureJsonData:
+    #   basicAuthPassword: password
+
+  # ==================== Elasticsearch 数据源 ====================
+  - name: Elasticsearch
+    type: elasticsearch
+    access: proxy
+    url: http://elasticsearch:9200
+    jsonData:
+      index: app-logs-*
+      interval: Daily
+      timeField: "@timestamp"
+      logMessageField: message
+      logLevelField: level
+
+  # ==================== Jaeger 数据源 ====================
+  - name: Jaeger
+    type: jaeger
+    access: proxy
+    url: http://jaeger:16686
+    jsonData:
+      tracesToLogs:
+        datasourceUid: Elasticsearch
+        tags:
+          - key: cluster
+            value: go-zero-shop
+          - key: env
+            value: production

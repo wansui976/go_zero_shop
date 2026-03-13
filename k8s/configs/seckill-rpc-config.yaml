@@ -1,0 +1,28 @@
+# Seckill RPC 配置
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: seckill-rpc-config
+  namespace: go-zero-shop
+data:
+  seckill.yaml: |
+    Name: seckill.rpc
+    ListenOn: 0.0.0.0:9889
+    Mode: dev
+    Etcd:
+      Hosts:
+      - etcd:2379
+      Key: seckill.rpc
+    BizRedis:
+      Host: redis:6379
+      Pass:
+      Type: node
+    ProductRPC:
+      Etcd:
+        Hosts:
+          - etcd:2379
+        Key: product.rpc
+    Kafka:
+      Addrs:
+        - kafka:9092
+      SeckillTopic: seckill-topic

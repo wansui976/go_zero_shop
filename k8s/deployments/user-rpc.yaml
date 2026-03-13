@@ -1,0 +1,157 @@
+# /tmp/go_zero_shop_extracted/go_zero_shop/deploy/kubernetes/base/user-rpc.yaml
+
+---
+# 1. RPC 服务部署 (Deployment)
+# 作用：定义 User-RPC 业务容器的运行参数。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-rpc
+  namespace: go-zero-shop
+  labels:
+    app: user-rpc
+    tier: backend        # 业务分层：后端
+    service-type: rpc    # 服务类型：RPC
+spec:
+  replicas: 2            # 初始副本数：2（保证高可用）
+  selector:
+    matchLabels:
+      app: user-rpc
+  template:
+    metadata:
+      labels:
+        app: user-rpc
+        tier: backend
+        service-type: rpc
+      # 监控注解：告诉 Prometheus 自动抓取此 Pod 的指标
+      annotations:
+        prometheus.io/scrape: "true"    # 允许抓取
+        prometheus.io/port: "9091"      # 监控指标端口
+        prometheus.io/path: "/metrics"  # 指标路径
+    spec:
+      serviceAccountName: shop-service-account # 指定服务账号（用于权限控制）
+      containers:
+        - name: user-rpc
+          image: go-zero-shop/user-rpc:latest
+          imagePullPolicy: IfNotPresent # 如果本地有镜像则不拉取远程
+          ports:
+            - containerPort: 9000       # gRPC 服务端口
+              name: grpc
+            - containerPort: 9091       # 指标暴露端口
+              name: metrics
+          env:
+            # 这里的环境变量用于 Go 程序内部逻辑（如下发日志、追踪等）
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            
+            # 基础设施连接配置：从共享 ConfigMap 中读取主机地址
+            - name: MYSQL_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: shop-config
+                  key: MYSQL_HOST
+            - name: MYSQL_PASSWORD      # 从 Secret 读取数据库密码
+              valueFrom:
+                secretKeyRef:
+                  name: shop-secrets
+                  key: MYSQL_PASSWORD
+            - name: REDIS_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: shop-config
+                  key: REDIS_HOST
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shop-secrets
+                  key: REDIS_PASSWORD
+            - name: ETCD_HOSTS
+              valueFrom:
+                configMapKeyRef:
+                  name: shop-config
+                  key: ETCD_HOSTS
+          
+          resources:             # 资源限制
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          
+          # 健康检查：使用原生 gRPC 协议进行探针探测
+          readinessProbe:
+            grpc:
+              port: 9000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 9000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          
+          volumeMounts:
+            - name: config-volume
+              mountPath: /app/etc # 业务配置文件挂载路径
+      volumes:
+        - name: config-volume
+          configMap:
+            name: user-rpc-config # 引用该服务专用的配置文件
+
+---
+# 2. 服务暴露 (Service)
+# 作用：提供稳定的虚拟 IP，供 API 网关（Gateway/Api）调用。
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-rpc-service
+  namespace: go-zero-shop
+  labels:
+    app: user-rpc
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9000         # 逻辑访问端口
+      targetPort: 9000   # 容器内 gRPC 端口
+      name: grpc
+    - port: 9091         # 逻辑监控端口
+      targetPort: 9091   # 容器内监控端口
+      name: metrics
+  selector:
+    app: user-rpc
+
+---
+# 3. 自动扩缩容 (HPA)
+# 作用：根据资源消耗情况自动增加或减少 Pod 数量。
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: user-rpc-hpa
+  namespace: go-zero-shop
+spec:
+  scaleTargetRef:         # 扩缩容的目标对象
+    apiVersion: apps/v1
+    kind: Deployment
+    name: user-rpc
+  minReplicas: 2          # 最少保留 2 个副本
+  maxReplicas: 10         # 最大自动扩容到 10 个副本
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70 # CPU 平均利用率超过 70% 时扩容
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80 # 内存平均利用率超过 80% 时扩容

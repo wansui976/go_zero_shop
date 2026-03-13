@@ -1,0 +1,450 @@
+version: '3.8'
+
+services:
+  # ==================== 基础设施 ====================
+  mysql:
+    image: mysql:8.0
+    container_name: shop-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123456
+      MYSQL_DATABASE: go_zero_shop
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init-sql:/docker-entrypoint-initdb.d
+    networks:
+      - shop-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: shop-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass redis123456
+    volumes:
+      - redis_data:/data
+    networks:
+      - shop-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis123456", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  etcd:
+    image: bitnami/etcd:3.5
+    container_name: shop-etcd
+    restart: unless-stopped
+    environment:
+      - ALLOW_NONE_AUTHENTICATION=yes
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd:2379
+    ports:
+      - "2379:2379"
+      - "2380:2380"
+    volumes:
+      - etcd_data:/bitnami/etcd
+    networks:
+      - shop-network
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: shop-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123456
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - shop-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==================== RPC 服务 ====================
+  user-rpc:
+    build:
+      context: ../../
+      dockerfile: Dockerfile/Dockerfile.user
+    container_name: shop-user-rpc
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    environment:
+      - MYSQL_HOST=mysql
+      - REDIS_HOST=redis
+      - ETCD_HOST=etcd
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      etcd:
+        condition: service_healthy
+    networks:
+      - shop-network
+
+  product-rpc:
+    build:
+      context: ../../
+      dockerfile: Dockerfile/Dockerfile.product
+    container_name: shop-product-rpc
+    restart: unless-stopped
+    ports:
+      - "9001:9001"
+    environment:
+      - MYSQL_HOST=mysql
+      - REDIS_HOST=redis
+      - ETCD_HOST=etcd
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      etcd:
+        condition: service_healthy
+    networks:
+      - shop-network
+
+  order-rpc:
+    build:
+      context: ../../
+      dockerfile: Dockerfile/Dockerfile.order
+    container_name: shop-order-rpc
+    restart: unless-stopped
+    ports:
+      - "9002:9002"
+    environment:
+      - MYSQL_HOST=mysql
+      - REDIS_HOST=redis
+      - ETCD_HOST=etcd
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      etcd:
+        condition: service_healthy
+      user-rpc:
+        condition: service_started
+      product-rpc:
+        condition: service_started
+    networks:
+      - shop-network
+
+  seckill-rpc:
+    build:
+      context: ../../
+      dockerfile: Dockerfile/Dockerfile.seckill
+    container_name: shop-seckill-rpc
+    restart: unless-stopped
+    ports:
+      - "9003:9003"
+    environment:
+      - MYSQL_HOST=mysql
+      - REDIS_HOST=redis
+      - ETCD_HOST=etcd
+      - RABBITMQ_HOST=rabbitmq
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      etcd:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - shop-network
+
+  cart-rpc:
+    build:
+      context: ../../
+      dockerfile: Dockerfile/Dockerfile.cart
+    container_name: shop-cart-rpc
+    restart: unless-stopped
+    ports:
+      - "9004:9004"
+    environment:
+      - MYSQL_HOST=mysql
+      - REDIS_HOST=redis
+      - ETCD_HOST=etcd
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      etcd:
+        condition: service_healthy
+    networks:
+      - shop-network
+
+  pay-rpc:
+    build:
+      context: ../../
+      dockerfile: Dockerfile/Dockerfile.pay
+    container_name: shop-pay-rpc
+    restart: unless-stopped
+    ports:
+      - "9005:9005"
+    environment:
+      - MYSQL_HOST=mysql
+      - REDIS_HOST=redis
+      - ETCD_HOST=etcd
+      - RABBITMQ_HOST=rabbitmq
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      etcd:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - shop-network
+
+  search-rpc:
+    build:
+      context: ../../
+      dockerfile: Dockerfile/Dockerfile.search
+    container_name: shop-search-rpc
+    restart: unless-stopped
+    ports:
+      - "9006:9006"
+    environment:
+      - MYSQL_HOST=mysql
+      - REDIS_HOST=redis
+      - ETCD_HOST=etcd
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      etcd:
+        condition: service_healthy
+    networks:
+      - shop-network
+
+  recommend-rpc:
+    build:
+      context: ../../
+      dockerfile: Dockerfile/Dockerfile.recommend
+    container_name: shop-recommend-rpc
+    restart: unless-stopped
+    ports:
+      - "9007:9007"
+    environment:
+      - MYSQL_HOST=mysql
+      - REDIS_HOST=redis
+      - ETCD_HOST=etcd
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      etcd:
+        condition: service_healthy
+    networks:
+      - shop-network
+
+  reply-rpc:
+    build:
+      context: ../../
+      dockerfile: Dockerfile/Dockerfile.reply
+    container_name: shop-reply-rpc
+    restart: unless-stopped
+    ports:
+      - "9008:9008"
+    environment:
+      - MYSQL_HOST=mysql
+      - REDIS_HOST=redis
+      - ETCD_HOST=etcd
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      etcd:
+        condition: service_healthy
+    networks:
+      - shop-network
+
+  # ==================== API Gateway ====================
+  api-gateway:
+    build:
+      context: ../../
+      dockerfile: Dockerfile/Dockerfile.api
+    container_name: shop-api-gateway
+    restart: unless-stopped
+    ports:
+      - "8888:8888"
+    environment:
+      - USER_RPC_HOST=user-rpc
+      - PRODUCT_RPC_HOST=product-rpc
+      - ORDER_RPC_HOST=order-rpc
+      - SECKILL_RPC_HOST=seckill-rpc
+      - CART_RPC_HOST=cart-rpc
+      - PAY_RPC_HOST=pay-rpc
+      - SEARCH_RPC_HOST=search-rpc
+      - RECOMMEND_RPC_HOST=recommend-rpc
+      - REPLY_RPC_HOST=reply-rpc
+      - ETCD_HOST=etcd
+    depends_on:
+      - user-rpc
+      - product-rpc
+      - order-rpc
+      - seckill-rpc
+    networks:
+      - shop-network
+
+  # ==================== 消息队列消费者 ====================
+  seckill-rmq:
+    build:
+      context: ../../
+      dockerfile: Dockerfile/Dockerfile.seckill.rmq
+    container_name: shop-seckill-rmq
+    restart: unless-stopped
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - MYSQL_HOST=mysql
+      - REDIS_HOST=redis
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - shop-network
+
+  order-rmq:
+    build:
+      context: ../../
+      dockerfile: Dockerfile/Dockerfile.order.rmq
+    container_name: shop-order-rmq
+    restart: unless-stopped
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - MYSQL_HOST=mysql
+      - REDIS_HOST=redis
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - shop-network
+
+  pay-rmq:
+    build:
+      context: ../../
+      dockerfile: Dockerfile/Dockerfile.pay.rmq
+    container_name: shop-pay-rmq
+    restart: unless-stopped
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - MYSQL_HOST=mysql
+      - REDIS_HOST=redis
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - shop-network
+
+  reply-rmq:
+    build:
+      context: ../../
+      dockerfile: Dockerfile/Dockerfile.reply.rmq
+    container_name: shop-reply-rmq
+    restart: unless-stopped
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - MYSQL_HOST=mysql
+      - REDIS_HOST=redis
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - shop-network
+
+  # ==================== 可观测性 ====================
+  jaeger:
+    image: jaegertracing/all-in-one:1.51
+    container_name: shop-jaeger
+    restart: unless-stopped
+    ports:
+      - "16686:16686"  # UI
+      - "14268:14268"  # Collector
+      - "6831:6831/udp"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    networks:
+      - shop-network
+
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: shop-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - shop-network
+
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: shop-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123456
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - shop-network
+
+networks:
+  shop-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  redis_data:
+  etcd_data:
+  rabbitmq_data:
+  prometheus_data:
+  grafana_data:

@@ -1,0 +1,23 @@
+Name: search.rpc
+ListenOn: 0.0.0.0:8083
+Etcd:
+  Hosts:
+  - 127.0.0.1:2379
+  Key: search.rpc
+
+Es:
+  Host: https://127.0.0.1:9200
+  Username: elastic
+  Password: lbhsKAYjUjR2y45ujrR7
+
+ProductRpc:
+  Etcd:
+    Hosts:
+      - 127.0.0.1:2379
+    Key: product.rpc
+
+Telemetry:
+  Name: search-rpc
+  Endpoint: http://jaeger:14268/api/traces
+  Sampler: 1.0  # 采样率，1.0表示100%采样
+  Batcher: jaeger

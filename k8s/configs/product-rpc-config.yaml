@@ -1,0 +1,38 @@
+# Product RPC 配置
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: product-rpc-config
+  namespace: go-zero-shop
+data:
+  product.yaml: |
+    Name: product.rpc
+    ListenOn: 0.0.0.0:8081
+    Etcd:
+      Hosts:
+      - etcd:2379
+      Key: product.rpc
+      
+    DataSource: root:123456@tcp(mysql:3306)/product?charset=utf8mb4&parseTime=true&loc=Local
+
+    CacheRedis:
+      - Host: redis:6379
+        Pass:
+        Type: node
+
+    BizRedis:
+      Host: redis:6379
+      Pass:
+      Type: node
+
+    AsynqRedis:
+      Host: redis:6379
+      Pass: 
+      Type: node
+      DB: 1
+
+    Telemetry:
+      Name: product-rpc
+      Endpoint: http://jaeger:14268/api/traces
+      Sampler: 1.0
+      Batcher: jaeger

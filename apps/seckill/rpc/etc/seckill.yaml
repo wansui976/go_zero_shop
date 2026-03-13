@@ -1,0 +1,26 @@
+Name: seckkill.rpc
+ListenOn: 127.0.0.1:9889
+Mode: dev
+Etcd:
+  Hosts:
+  - 127.0.0.1:2379
+  Key: seckkill.rpc
+BizRedis:
+  Host: 127.0.0.1:6379
+  Pass:
+  Type: node
+ProductRPC:
+  Etcd:
+    Hosts:
+      - 127.0.0.1:2379
+    Key: product.rpc
+Kafka:
+  Addrs:
+    - 127.0.0.1:9092
+  SeckillTopic: seckill-topic
+
+Telemetry:
+  Name: seckill-rpc
+  Endpoint: http://jaeger:14268/api/traces
+  Sampler: 1.0  # 采样率，1.0表示100%采样
+  Batcher: jaeger

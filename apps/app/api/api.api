@@ -1,0 +1,366 @@
+syntax = "v1"
+
+import (
+	"apis/userReceiveAddress.api"
+	"apis/user.api"
+	"apis/usercollection.api"
+	"apis/order.api"
+)
+
+// 全局统一响应结构体（前端统一解析格式）
+type CommonResponse {
+	ResultCode int64       `json:"resultCode"` // 前端核心判断字段：200=成功，非200=失败
+	Msg        string      `json:"msg"` // 错误提示信息（成功时为"success"）
+	Data       interface{} `json:"data"` // 业务数据（成功时返回，失败时可为空）
+}
+
+// 基础公共结构体
+type Banner {
+	ID   int64  `json:"id"` // Banner ID
+	Name string `json:"name"` // Banner 名称
+	URL  string `json:"url"` // 图片地址（CDN 全路径）
+}
+
+type Image {
+	ID  int64  `json:"id"` // 图片 ID
+	URL string `json:"url"` // 图片地址（CDN 全路径）
+}
+
+type UserMini {
+	ID     int64  `json:"id"` // 用户 ID
+	Name   string `json:"name"` // 用户名（脱敏，如"张*三"）
+	Avatar string `json:"avatar"` // 用户头像地址
+}
+
+// 商品相关结构体
+type Product {
+	Id                  int64   `json:"id"` // 商品ID (SPU)
+	Name                string  `json:"name"` // 商品名称
+	Brief               string  `json:"brief"` // 商品简介
+	Keywords            string  `json:"keywords"` // 关键词，用于搜索
+	ImageUrl            string  `json:"image_url"` // 主图URL
+	CategoryId          int64   `json:"category_id"` // 主分类ID
+	CategoryName        string  `json:"category_name"` // 主分类名称
+	CategoryIds         string  `json:"category_ids"` // 所有分类ID集合（逗号分隔）
+	BrandId             int64   `json:"brand_id"` // 品牌ID
+	BrandName           string  `json:"brand_name"` // 品牌名称
+	Price               int64   `json:"price"` // 售价
+	Stock               int64   `json:"stock"` // 当前库存
+	LowStock            int64   `json:"low_stock"` // 库存预警值
+	Sales               int64   `json:"sales"` // 销量
+	Unit                string  `json:"unit"` // 单位（件 / 台 / 箱）
+	Weight              float64 `json:"weight"` // 重量(kg)
+	DetailTitle         string  `json:"detail_title"` // 详情标题
+	DetailDesc          string  `json:"detail_desc"` // 详情描述
+	DetailHtml          string  `json:"detail_html"` // 富文本详情内容（HTML）
+	Sort                int64   `json:"sort"` // 排序值
+	NewStatusSort       int64   `json:"new_status_sort"` // 新品排序
+	RecommendStatusSort int64   `json:"recommend_status_sort"` // 推荐排序
+	Status              int64   `json:"status"` // 商品状态：0-下架，1-上架
+	CreateTime          int64   `json:"create_time"` // 创建时间
+	UpdateTime          int64   `json:"update_time"` // 更新时间
+}
+
+type ProductItem {
+	GoodsId       int64  `json:"goods_id"`
+	GoodsName     string `json:"goods_name"` //商品名称
+	SellingPrice  int64  `json:"selling_price"` //售价
+	GoodsCoverImg string `json:"goods_cover_img"` //商品封面图片URL
+}
+
+type Comment {
+	ID         int64     `json:"id"` // 评论 ID
+	ProductID  int64     `json:"product_id"` // 关联商品 ID
+	Content    string    `json:"content"` // 评论内容
+	Images     []*Image  `json:"images"` // 评论附图（最多9张）
+	User       *UserMini `json:"user"` // 评论用户信息（脱敏）
+	CreateTime int64     `json:"create_time"` // 评论时间（时间戳，毫秒级）
+	UpdateTime int64     `json:"update_time"` // 更新时间（时间戳，毫秒级）
+}
+
+// 购物车相关结构体
+type CartProduct {
+	Product *Product `json:"product"` // 商品基础信息
+	Count   int64    `json:"count"` // 购买数量（>=1）
+}
+
+// ######################## 接口请求/响应结构体 ########################
+type HomeBannerResponse {
+	Banners []*Banner `json:"banners"` // Banner 列表（最多5条）
+}
+
+type FlashSaleResponse {
+	StartTime int64      `json:"start_time"` // 抢购开始时间（时间戳，毫秒级）
+	EndTime   int64      `json:"end_time"` // 抢购结束时间（时间戳，毫秒级）
+	Products  []*Product `json:"products"` // 限时抢购商品列表
+}
+
+type RecommendRequest {
+	Cursor int64 `form:"cursor"` // 分页游标（首次请求传0）
+	Ps     int64 `form:"ps,default=20"` // 每页条数（默认20，最大50）
+}
+
+type RecommendResponse {
+	Products   []*Product `json:"products"` // 推荐商品列表
+	IsEnd      bool       `json:"is_end"` // 是否最后一页（true=无更多）
+	LastCursor int64      `json:"last_cursor"` // 下一页游标（IsEnd=true 时为0）
+}
+
+type CategoryListRequest {
+	Cursor   int64  `form:"cursor"` // 分页游标（首次请求传0）
+	Ps       int64  `form:"ps,default=20"` // 每页条数（默认20，最大50）
+	Category string `form:"category"` // 分类名称（为空时查全部分类）
+	Sort     string `form:"sort,default=recommend"` // 排序规则：recommend-推荐，price_asc-价低到高，price_desc-价高到低，newest-最新
+}
+
+type CategoryListResponse {
+	Products   []*Product `json:"products"` // 分类商品列表
+	IsEnd      bool       `json:"is_end"` // 是否最后一页
+	LastCursor int64      `json:"last_cursor"` // 下一页游标
+}
+
+//购物车
+type CartListRequest {}
+
+type CartAddRequest {
+	PID      int64 `json:"pid"`
+	Quantity int64 `json:"quantity"`
+	Price    int64 `json:"price"`
+}
+
+type CartUpdateRequest {
+	PID      int64 `json:"pid,required"`
+	Quantity int64 `json:"quantity,required"`
+}
+
+type CartDeleteRequest {
+	PID int64 `json:"pid,required"`
+}
+
+type CartListResponse {
+	Products []*CartProduct `json:"products"` // 购物车商品列表
+}
+
+type ProductCommentRequest {
+	ProductID int64 `form:"product_id,required"` // 商品 ID（必填）
+	Cursor    int64 `form:"cursor"` // 分页游标（首次传0）
+	Ps        int64 `form:"ps,default=20"` // 每页条数（默认20，最大50）
+}
+
+type ProductCommentResponse {
+	Comments   []*Comment `json:"comments"` // 商品评论列表
+	IsEnd      bool       `json:"is_end"` // 是否最后一页
+	LastCursor int64      `json:"last_cursor"` // 下一页游标
+	TotalCount int64      `json:"total_count"` // 评论总数
+}
+
+type ProductDetailRequest {
+	ProductID int64 `path:"productId"` // 商品 ID（必填）
+}
+
+type ProductDetailResponse {
+	Product      *Product   `json:"product"` // 商品详情
+	Comments     []*Comment `json:"comments"` // 热门评论（前3条）
+	CommentTotal int64      `json:"comment_total"` // 评论总数
+}
+
+type ProductListRequest {
+	Cursor     int64 `form:"cursor,default=0"` // 分页游标（默认0）
+	CategoryID int32 `form:"category_id"` // 分类 ID（不传查全部分类）
+	Ps         int32 `form:"ps,default=10"` // 每页条数（默认10，最大50）
+}
+
+type ProductListResponse {
+	Products   []*Product `json:"products"` // 商品列表
+	IsEnd      bool       `json:"is_end"` // 是否最后一页
+	LastCursor int64      `json:"last_cursor"` // 下一页游标
+}
+
+type CheckAndUpdateStockRequest {
+	ProductID int64  `json:"product_id,required"` // 商品 ID（必填）
+	RequestID string `json:"request_id,required"` // 请求唯一 ID（幂等校验用）
+	Quantity  int64  `json:"quantity,required"` // 扣减数量（>=1）
+}
+
+type CheckAndUpdateStockResponse {
+	Success     bool  `json:"success"` // 是否扣减成功
+	RemainStock int64 `json:"remain_stock"` // 扣减后剩余库存
+}
+
+type HomeResponse {
+	CarouselList []*ProductItem `json:"carousel_list"`
+	NewGoodses   []*ProductItem `json:"new_goodses"`
+	HotGoodses   []*ProductItem `json:"hot_goodses"`
+}
+
+type ProductEsRequest {}
+
+type ProductEsSearchRequest {
+	Keyword   string `json:"keyword"`
+	Page_num  int64  `json:"page_num"`
+	Page_size int64  `json:"page_size"`
+	Sort      int32  `json:"sort"` ////排序字段:0->按相关度；1->按新品；2->按销量；3->价格从低到高；4->价格从高到低
+}
+
+// ######################## 接口定义（按业务分组，修复语法错误） ########################
+// 首页相关接口（无需登录）
+@server (
+	prefix: v1/home
+	group:  home
+)
+service api-api {
+	@doc "首页Banner列表"
+	@handler HomeBannerHandler
+	get /banner returns (CommonResponse)
+
+	@doc "获取首页信息"
+	@handler HomeHandler
+	get /index-infos returns (CommonResponse)
+
+	@doc "限时抢购商品列表"
+	@handler FlashSaleHandler
+	get /flash-sale returns (CommonResponse)
+}
+
+// 商品相关接口（无需登录）
+@server (
+	prefix: v1/product
+	group:  product
+)
+service api-api {
+	@doc "商品索引"
+	@handler ProductEsHandler
+	post /es (ProductEsRequest) returns (CommonResponse)
+
+	@doc "商品搜索"
+	@handler ProductEsSearchHandler
+	post /es/search (ProductEsSearchRequest) returns (CommonResponse)
+
+	@doc "商品详情"
+	@handler ProductDetailHandler
+	get /detail/:productId (ProductDetailRequest) returns (CommonResponse)
+
+	@doc "商品评论列表"
+	@handler ProductCommentHandler
+	get /comment (ProductCommentRequest) returns (CommonResponse)
+
+	@doc "商品列表（按分类）"
+	@handler ProductListHandler
+	get /list (ProductListRequest) returns (CommonResponse)
+
+	@doc "推荐商品列表"
+	@handler RecommendHandler
+	get /recommend (RecommendRequest) returns (CommonResponse)
+
+	@doc "分类商品列表"
+	@handler CategoryListHandler
+	get /category/list (CategoryListRequest) returns (CommonResponse)
+}
+
+// 库存操作接口（需登录，高权限）
+@server (
+	prefix: v1/product/stock
+	group:  productStock
+	jwt:    JwtAuth // 登录校验
+)
+service api-api {
+	@doc "库存检查与扣减（下单专用）"
+	@handler CheckAndUpdateStockHandler
+	post /check-and-update (CheckAndUpdateStockRequest) returns (CommonResponse)
+}
+
+// 购物车相关接口（需登录）
+@server (
+	prefix: v1/cart
+	group:  cart
+	jwt:    JwtAuth // 登录校验
+)
+service api-api {
+	@doc "购物车商品列表"
+	@handler CartListHandler
+	get /list (CartListRequest) returns (CommonResponse)
+
+	@doc "添加购物车"
+	@handler CartAddHandler
+	post /add (CartAddRequest) returns (CommonResponse)
+
+	@doc "更新购物车"
+	@handler CartUpdateHandler
+	post /update (CartUpdateRequest) returns (CommonResponse)
+
+	@doc "删除用户购物车"
+	@handler CartDeleteHandler
+	post /delete (CartDeleteRequest) returns (CommonResponse)
+}
+
+// 用户相关接口（部分需登录）
+@server (
+	prefix: v1/user
+	group:  user
+)
+service api-api {
+	@doc "用户登录"
+	@handler login
+	post /login (LoginReq) returns (CommonResponse)
+}
+
+@server (
+	prefix: v1/user
+	group:  user
+	jwt:    JwtAuth // 登录校验
+)
+service api-api {
+	@doc "获取用户信息"
+	@handler detail
+	get /info (UserInfoReq) returns (CommonResponse)
+
+	@doc "添加收货地址"
+	@handler addReceiveAddress
+	post /add-receive-address (UserReceiveAddressAddReq) returns (CommonResponse)
+
+	@doc "编辑收货地址"
+	@handler editReceiveAddress
+	post /edit-receive-address (UserReceiveAddressEditReq) returns (CommonResponse)
+
+	@doc "删除收货地址"
+	@handler delReceiveAddress
+	delete /del-receive-address (UserReceiveAddressDelReq) returns (CommonResponse)
+
+	@doc "获取收货地址列表"
+	@handler userReceiveAddressList
+	get /get-receive-address-list (UserReceiveAddressListReq) returns (CommonResponse)
+
+	@doc "获取收货地址"
+	@handler userReceiveAddress
+	get /get-receive-address (UserReceiveAddressReq) returns (CommonResponse)
+
+	@doc "添加商品收藏"
+	@handler userCollectionAdd
+	post /add-collection (UserCollectionAddReq) returns (CommonResponse)
+
+	@doc "删除商品收藏"
+	@handler userCollectionDel
+	delete /del-collection (UserCollectionDelReq) returns (CommonResponse)
+
+	@doc "获取收藏列表"
+	@handler userCollectionList
+	get /get-collection-list (UserCollectionListReq) returns (CommonResponse)
+}
+
+// 订单相关接口（需登录）
+@server (
+	prefix: v1/order
+	group:  order
+	jwt:    JwtAuth // 登录校验
+)
+service api-api {
+	@doc "创建订单"
+	@handler addOrder
+	post /add (OrderAddReq) returns (CommonResponse)
+	
+	@doc "获取订单列表"
+	@handler OrderListHandler
+	get /list (OrderListRequest) returns (CommonResponse)
+}
+
+//goctl api go -api api.api -dir .

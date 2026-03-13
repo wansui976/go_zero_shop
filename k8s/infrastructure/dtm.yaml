@@ -1,0 +1,81 @@
+# DTM 部署配置
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dtm
+  namespace: go-zero-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dtm
+  template:
+    metadata:
+      labels:
+        app: dtm
+    spec:
+      containers:
+      - name: dtm
+        image: dtm-labs/dtm:latest
+        ports:
+        - containerPort: 36789
+        - containerPort: 36790
+        env:
+        - name: DTM_DB_DRIVER
+          value: "mysql"
+        - name: DTM_DB_DSN
+          value: "root:123456@tcp(mysql:3306)/dtm?charset=utf8mb4&parseTime=true&loc=Local"
+        - name: DTM_BARRIER_DB_DRIVER
+          value: "mysql"
+        - name: DTM_BARRIER_DB_DSN
+          value: "root:123456@tcp(mysql:3306)/dtm_barrier?charset=utf8mb4&parseTime=true&loc=Local"
+        volumeMounts:
+        - name: config
+          mountPath: /app/conf
+          readOnly: true
+        livenessProbe:
+          tcpSocket:
+            port: 36789
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 36789
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: config
+        configMap:
+          name: dtm-config
+      initContainers:
+      - name: wait-for-mysql
+        image: busybox:1.28
+        command: ['sh', '-c', 'until nc -z mysql 3306; do echo waiting for mysql; sleep 2; done;']
+        - name: init-dtm-db
+          image: mysql:8.0
+          env:
+          - name: MYSQL_PWD
+            value: "123456"
+          command:
+          - sh
+          - -c
+          - |
+            mysql -h mysql -u root -e "CREATE DATABASE IF NOT EXISTS dtm;"
+            mysql -h mysql -u root -e "CREATE DATABASE IF NOT EXISTS dtm_barrier;"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dtm
+  namespace: go-zero-shop
+spec:
+  selector:
+    app: dtm
+  ports:
+  - name: http
+    port: 36789
+    targetPort: 36789
+  - name: grpc
+    port: 36790
+    targetPort: 36790
+  type: ClusterIP

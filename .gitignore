@@ -1,0 +1,8 @@
+.DS_Store
+.gocache/
+logs/
+bin/
+consumer
+.idea/
+.vscode/
+*.log

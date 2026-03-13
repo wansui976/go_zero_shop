@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package cart;
+option go_package = "./cart";
+
+// 通用响应结构体（符合DTM规范，兼容结果解析）
+message Response {
+  bool Success = 1;    // 是否成功
+  int64 Code = 2;      // 状态码（200=成功，其他=失败）
+  string Message = 3;  // 提示信息
+}
+
+// 添加购物车请求
+message CartItemRequest {
+  int64 UserId = 1;       // 用户ID
+  int64 ProductId = 2;    // 商品ID
+  int64 Price = 3;        // 加入时商品售价（分）
+  int64 Quantity = 4;     // 商品数量（默认1）
+  int64 Selected = 5;     // 是否选中（0=否，1=是，默认1）
+}
+
+// 购物车列表/清空请求（按用户ID筛选）
+message CartListRequest {
+  int64 UserId = 1;       // 用户ID
+}
+
+// 更新购物车请求（支持部分字段更新）
+message UpdateCartRequest {
+  int64 UserId = 1;       // 用户ID
+  int64 ProductId = 2;    // 商品ID
+  int64 Quantity = 3;     // 新数量（可选，不传则不更新）
+  int64 Selected = 4;     // 新选中状态（可选，不传则不更新）
+}
+
+// 删除购物车请求（单商品删除）
+message DeleteCartRequest {
+  int64 UserId = 1;       // 用户ID
+  int64 ProductId = 2;    // 商品ID
+}
+
+// 购物车项结构体（对应数据库表字段）
+message CartItem {
+  int64 Id = 1;               // 购物车ID
+  int64 UserId = 2;           // 用户ID
+  int64 ProductId = 3;        // 商品ID
+  int64 Price = 4;            // 加入时商品售价（分）
+  int64 Quantity = 5;         // 商品数量
+  int64 Selected = 6;         // 是否选中（0=否，1=是）
+  int64 DeleteStatus = 7;     // 删除状态（0=正常，1=删除）
+  string CreateTime = 8;      // 创建时间（格式：yyyy-MM-dd HH:mm:ss）
+  string UpdateTime = 9;      // 更新时间（格式：yyyy-MM-dd HH:mm:ss）
+}
+
+// 购物车列表响应
+message CartListResponse {
+  bool Success = 1;              // 是否成功
+  int64 Code = 2;                // 状态码
+  string Message = 3;            // 提示信息
+  repeated CartItem CartItems = 4; // 购物车项列表
+  int64 TotalCount = 5;          // 商品总数
+  int64 TotalPrice = 6;          // 商品总价（分，仅计算选中商品）
+}
+
+// 购物车服务定义
+service Cart {
+  // 添加购物车（已存在则更新数量）
+  rpc AddCart(CartItemRequest) returns(Response);
+  
+  // 获取用户购物车列表（过滤删除状态为0的项）
+  rpc GetCartList(CartListRequest) returns(CartListResponse);
+  
+  // 更新购物车（支持修改数量/选中状态）
+  rpc UpdateCart(UpdateCartRequest) returns(Response);
+  
+  // 删除购物车项（逻辑删除：置delete_status=1）
+  rpc DeleteCart(DeleteCartRequest) returns(Response);
+  
+  // 清空用户购物车（批量置delete_status=1）
+  rpc ClearCart(CartListRequest) returns(Response);
+  
+  // 切换购物车商品选中状态（单独封装便于前端调用）
+  rpc CheckCart(CartItemRequest) returns(Response);
+
+  
+}

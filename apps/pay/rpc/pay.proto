@@ -1,0 +1,145 @@
+syntax = "proto3";
+
+package pay;
+
+option go_package = "./pay";
+
+// =======================================
+// Payment Service
+// =======================================
+service PayService {
+
+  // 创建支付订单
+  rpc CreatePayment(CreatePaymentRequest) returns (CreatePaymentResponse);
+
+  // 查询支付状态
+  rpc GetPaymentByOrderId(GetPaymentByOrderIdRequest) returns (GetPaymentByOrderIdResponse);
+
+  // 支付回调（第三方支付回调）
+  rpc PaymentCallback(PaymentCallbackRequest) returns (PaymentCallbackResponse);
+
+  // 发起退款
+  rpc Refund(RefundRequest) returns (RefundResponse);
+
+  // 查询退款状态
+  rpc GetRefundById(GetRefundByIdRequest) returns (GetRefundByIdResponse);
+}
+
+// =======================================
+// Payment Status
+// =======================================
+enum PaymentStatus {
+  PaymentStatusPending   = 0;  // 待支付
+  PaymentStatusPaid     = 1;  // 已支付
+  PaymentStatusFailed   = 2;  // 支付失败
+  PaymentStatusCanceled = 3;  // 已取消
+}
+
+enum RefundStatus {
+  RefundStatusPending   = 0;  // 待退款
+  RefundStatusSuccess  = 1;  // 退款成功
+  RefundStatusFailed   = 2;  // 退款失败
+}
+
+enum PaymentType {
+  PaymentTypeUnknown = 0;
+  PaymentTypeWechat  = 1;  // 微信支付
+  PaymentTypeAlipay = 2;  // 支付宝
+}
+
+// =======================================
+// Create Payment
+// =======================================
+message CreatePaymentRequest {
+  string order_id = 1;
+  int64  user_id = 2;
+  int64  amount = 3;        // 支付金额（单位：分）
+  PaymentType payment_type = 4;
+  string return_url = 5;    // 支付完成后返回地址
+}
+
+message CreatePaymentResponse {
+  string payment_id = 1;
+  string pay_url = 2;       // 支付链接（第三方支付跳转地址）
+  int64  expire_time = 3;    // 过期时间戳
+}
+
+// =======================================
+// Get Payment By OrderId
+// =======================================
+message GetPaymentByOrderIdRequest {
+  string order_id = 1;
+}
+
+message GetPaymentByOrderIdResponse {
+  PaymentInfo payment = 1;
+}
+
+message PaymentInfo {
+  string payment_id = 1;
+  string order_id = 2;
+  int64  user_id = 3;
+  int64  amount = 4;
+  PaymentStatus status = 5;
+  PaymentType payment_type = 6;
+  int64  create_time = 7;
+  int64  pay_time = 8;       // 支付时间
+  string transaction_id = 9; // 第三方交易号
+}
+
+// =======================================
+// Payment Callback (from third-party)
+// =======================================
+message PaymentCallbackRequest {
+  string payment_id = 1;
+  string order_id = 2;
+  PaymentStatus status = 3;
+  string transaction_id = 4; // 第三方交易号
+  int64  total_amount = 5;   // 回调金额（验签用）
+  string sign = 6;           // 签名
+}
+
+message PaymentCallbackResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// =======================================
+// Refund
+// =======================================
+message RefundRequest {
+  string order_id = 1;
+  string payment_id = 2;
+  int64  refund_amount = 3;  // 退款金额（单位：分）
+  string reason = 4;         // 退款原因
+}
+
+message RefundResponse {
+  string refund_id = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+// =======================================
+// Get Refund By Id
+// =======================================
+message GetRefundByIdRequest {
+  string refund_id = 1;
+}
+
+message GetRefundByIdResponse {
+  RefundInfo refund = 1;
+}
+
+message RefundInfo {
+  string refund_id = 1;
+  string order_id = 2;
+  string payment_id = 3;
+  int64  refund_amount = 4;
+  RefundStatus status = 5;
+  string reason = 6;
+  int64  create_time = 7;
+  int64  refund_time = 8;
+}
+
+//goctl rpc protoc pay.proto --go_out=. --go-grpc_out=. --zrpc_out=.

@@ -1,0 +1,40 @@
+
+FROM golang:1.21-alpine AS builder
+
+ARG CGO_ENABLED=0
+ARG GOOS=linux
+ARG GOARCH=arm64
+
+RUN apk add --no-cache git ca-certificates tzdata
+ENV GOPROXY=https://goproxy.cn,direct
+
+WORKDIR /build
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN go build -ldflags="-s -w" -o /app/order-rpc ./apps/order/rpc/order.go
+
+FROM alpine:3.19
+
+RUN apk add --no-cache ca-certificates tzdata
+ENV TZ=Asia/Shanghai
+
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+WORKDIR /app
+
+COPY --from=builder /app/order-rpc .
+COPY --from=builder /build/apps/order/rpc/etc/order.yaml ./etc/
+
+RUN chown -R appuser:appgroup /app
+USER appuser
+
+EXPOSE 9002
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:9002/health || exit 1
+
+CMD ["./order-rpc", "-f", "./etc/order.yaml"]

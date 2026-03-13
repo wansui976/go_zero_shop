@@ -1,0 +1,67 @@
+# MySQL 初始化脚本 ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-init-scripts
+  namespace: go-zero-shop
+data:
+  01-create-databases.sql: |
+    -- 创建用户数据库
+    CREATE DATABASE IF NOT EXISTS user;
+    -- 创建产品数据库
+    CREATE DATABASE IF NOT EXISTS product;
+    -- 创建订单数据库
+    CREATE DATABASE IF NOT EXISTS go_zero_shop;
+    -- 创建回复数据库
+    CREATE DATABASE IF NOT EXISTS reply;
+    -- 创建购物车数据库
+    CREATE DATABASE IF NOT EXISTS cart;
+    -- 创建秒杀数据库
+    CREATE DATABASE IF NOT EXISTS seckill;
+
+  02-create-tables.sql: |
+    -- 切换到产品数据库创建表结构
+    USE product;
+
+    -- 创建商品分类表
+    CREATE TABLE IF NOT EXISTS category (
+      id int(11) NOT NULL AUTO_INCREMENT,
+      parentid int(11) DEFAULT NULL,
+      name varchar(50) DEFAULT NULL,
+      status int(1) DEFAULT '1',
+      PRIMARY KEY (id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+    -- 创建商品表
+    CREATE TABLE IF NOT EXISTS product (
+      id int(11) NOT NULL AUTO_INCREMENT,
+      cateid int(11) DEFAULT NULL,
+      name varchar(100) DEFAULT NULL,
+      subtitle varchar(200) DEFAULT NULL,
+      images text,
+      detail text,
+      price decimal(20,2) DEFAULT NULL,
+      stock int(11) DEFAULT NULL,
+      status int(1) DEFAULT '1',
+      create_time datetime DEFAULT NULL,
+      update_time datetime DEFAULT NULL,
+      PRIMARY KEY (id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+  03-insert-sample-data.sql: |
+    USE product;
+
+    INSERT INTO category (id, parentid, name, status)
+    VALUES (1, 0, '男装', 1),
+           (2, 1, '夹克', 1),
+           (3, 1, '中山装', 1),
+           (4, 0, '家电', 1),
+           (5, 4, '洗衣机', 1),
+           (6, 4, '冰箱', 1),
+           (7, 4, '电风扇', 1),
+           (8, 4, '电视', 1);
+
+    INSERT INTO product (id, cateid, name, subtitle, images, detail, price, stock, status, create_time, update_time)
+    VALUES (1, 2, '夹克1', '夹克1', '1.jpg,2.jpg,3.jpg', '详情', 100.00, 100, 1, NOW(), NOW()),
+           (2, 2, '夹克2', '夹克2', '1.jpg,2.jpg,3.jpg', '详情', 100.00, 100, 1, NOW(), NOW()),
+           (3, 2, '夹克3', '夹克3', '1.jpg,2.jpg,3.jpg', '详情', 100.00, 100, 1, NOW(), NOW());

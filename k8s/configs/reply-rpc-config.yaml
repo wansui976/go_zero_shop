@@ -1,0 +1,21 @@
+# Reply RPC 配置
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: reply-rpc-config
+  namespace: go-zero-shop
+data:
+  reply.yaml: |
+    Name: reply.rpc
+    ListenOn: 0.0.0.0:8083
+    Etcd:
+      Hosts:
+      - etcd:2379
+      Key: reply.rpc
+
+    DataSource: root:123456@tcp(mysql:3306)/reply?charset=utf8mb4&parseTime=true&loc=Local
+
+    CacheRedis:
+      - Host: redis:6379
+        Pass:
+        Type: node

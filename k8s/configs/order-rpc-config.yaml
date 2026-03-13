@@ -1,0 +1,41 @@
+# Order RPC 配置
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: order-rpc-config
+  namespace: go-zero-shop
+data:
+  order.yaml: |
+    Name: order.rpc
+    ListenOn: 0.0.0.0:8082
+    Etcd:
+      Hosts:
+      - etcd:2379
+      Key: order.rpc
+      Mode: dev
+
+    UserRpc:
+      Etcd:
+        Hosts:
+          - etcd:2379
+        Key: user.rpc
+
+    ProductRpc:
+      Etcd:
+        Hosts:
+          - etcd:2379
+        Key: product.rpc
+
+    DataSource: root:123456@tcp(mysql:3306)/go-zero-mysql-demo?charset=utf8mb4&parseTime=true&loc=Local
+
+    CacheRedis:
+      - Host: redis:6379
+        Pass:
+        Type: node
+    BizRedis:
+      Host: redis:6379
+      Pass:
+      Type: node
+
+    Snowflake:
+      NodeID: 1

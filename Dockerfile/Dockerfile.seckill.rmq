@@ -1,0 +1,36 @@
+# Seckill RMQ Consumer Dockerfile
+FROM golang:1.21-alpine AS builder
+
+ARG CGO_ENABLED=0
+ARG GOOS=linux
+ARG GOARCH=arm64
+
+RUN apk add --no-cache git ca-certificates tzdata bash
+ENV GOPROXY=https://goproxy.cn,direct
+
+WORKDIR /build
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+# 构建消费者入口
+RUN go build -ldflags="-s -w" -o /app/seckill-rmq ./apps/seckill/rmq/
+
+FROM alpine:3.19
+
+RUN apk add --no-cache ca-certificates tzdata bash
+ENV TZ=Asia/Shanghai
+
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+WORKDIR /app
+
+COPY --from=builder /app/seckill-rmq .
+COPY --from=builder /build/apps/seckill/rmq/etc/*.yaml ./etc/
+
+RUN chown -R appuser:appgroup /app
+USER appuser
+
+CMD ["./seckill-rmq"]

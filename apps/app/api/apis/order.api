@@ -1,0 +1,53 @@
+syntax = "v1"
+
+
+// 订单相关结构体
+type Order {
+	OrderID            string `json:"order_id"` // 订单唯一 ID（雪花算法生成）
+	Status             int32  `json:"status"` // 订单状态：1-待支付，2-已支付，3-已发货，4-已完成，5-已取消
+	Payment            int64  `json:"payment"` // 实付金额（单位：分）
+	Payment_type        int32 `json:"payment_type"`
+	TotalPrice         int64  `json:"total_price"` // 订单总价（单位：分）
+	CreateTime         int64  `json:"create_time"` // 下单时间（时间戳，毫秒级）
+	ProductItems		[]*OrderProductItem		`json:"productitems"`
+	ReceiverName   string   `json:"receiver_name"` 
+    ReceiverPhone  string  `json:"receiver_phone"` 
+    ReceiverAddress string `json:"receiver_address"` 
+}
+
+type OrderProductItem {
+  ProductID  int64 `json:"product_id"`
+  Quantity  int64 `json:"quantity"`
+}
+
+type OrderItem  {
+    Id int64 `json:"id"`                 //商品id
+    Count int64 `json:"count"`            //数量
+    
+}
+
+//创建订单
+type (
+    OrderAddReq {
+        receiveAddressId string `json:"receiveAddressId"`    //用户收货地址表id
+        Items       []*OrderItem    `json:"items"`
+        PaymentType int8 `json:"payment_type"` //支付类型,1-微信支付 2-支付宝支付
+        
+    }
+
+    OrderAddResp {
+        Id string `json:"id"`                 //订单id
+    }
+)
+//创建订单
+
+//订单详情
+type (
+    OrderListRequest {
+    }
+    OrderListResponse {
+        OrderInfo Order `json:"orderInfo"`
+    }
+)
+//订单详情
+

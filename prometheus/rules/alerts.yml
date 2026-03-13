@@ -1,0 +1,237 @@
+# 告警规则 - 微服务监控
+groups:
+  # ==================== 服务可用性告警 ====================
+  - name: service_availability
+    rules:
+      # 服务宕机告警
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: infra
+        annotations:
+          summary: "服务 {{ $labels.job }} 已宕机"
+          description: "服务 {{ $labels.job }} ({{ $labels.instance }}) 已经宕机超过1分钟"
+          value: "{{ $value }}"
+
+      # API响应错误率告警
+      - alert: HighErrorRate
+        expr: rate(http_server_requests_seconds_count{status=~"5.."}[5m]) / rate(http_server_requests_seconds_count[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "{{ $labels.job }} 错误率过高"
+          description: "服务 {{ $labels.job }} 的5xx错误率超过5%，当前值: {{ $value | humanizePercentage }}"
+          value: "{{ $value | humanizePercentage }}"
+
+      # gRPC 错误率告警
+      - alert: GrpcErrorRate
+        expr: rate(grpc_server_handled_total{code!="OK"}[5m]) / rate(grpc_server_handled_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "{{ $labels.job }} gRPC错误率过高"
+          description: "服务 {{ $labels.job }} 的gRPC错误率超过5%"
+
+  # ==================== 性能告警 ====================
+  - name: service_performance
+    rules:
+      # API响应时间告警 (P99 > 2s)
+      - alert: HighLatencyP99
+        expr: histogram_quantile(0.99, rate(http_server_requests_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "{{ $labels.job }} P99响应时间过高"
+          description: "服务 {{ $labels.job }} 的P99响应时间超过2秒，当前值: {{ $value | humanizeDuration }}"
+          value: "{{ $value | humanizeDuration }}"
+
+      # API响应时间告警 (P95 > 1s)
+      - alert: HighLatencyP95
+        expr: histogram_quantile(0.95, rate(http_server_requests_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "{{ $labels.job }} P95响应时间过高"
+          description: "服务 {{ $labels.job }} 的P95响应时间超过1秒"
+
+      # gRPC响应时间告警
+      - alert: GrpcHighLatency
+        expr: histogram_quantile(0.99, rate(grpc_server_handling_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "{{ $labels.job }} gRPC P99响应时间过高"
+          description: "服务 {{ $labels.job }} 的gRPC P99响应时间超过1秒"
+
+  # ==================== 资源使用告警 ====================
+  - name: resource_usage
+    rules:
+      # CPU使用率告警
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+          team: infra
+        annotations:
+          summary: "主机 {{ $labels.instance }} CPU使用率过高"
+          description: "主机 {{ $labels.instance }} 的CPU使用率超过80%，当前值: {{ $value | humanizePercentage }}"
+
+      # 内存使用率告警
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+          team: infra
+        annotations:
+          summary: "主机 {{ $labels.instance }} 内存使用率过高"
+          description: "主机 {{ $labels.instance }} 的内存使用率超过85%"
+
+      # 磁盘使用率告警
+      - alert: HighDiskUsage
+        expr: (1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+          team: infra
+        annotations:
+          summary: "主机 {{ $labels.instance }} 磁盘使用率过高"
+          description: "主机 {{ $labels.instance }} 的根分区使用率超过80%"
+
+  # ==================== 数据库告警 ====================
+  - name: database_alerts
+    rules:
+      # MySQL 连接池告警
+      - alert: MySQLConnectionPoolExhausted
+        expr: mysql_global_status_threads_connected / mysql_global_variables_max_connections > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          team: dba
+        annotations:
+          summary: "MySQL 连接池即将耗尽"
+          description: "MySQL {{ $labels.instance }} 连接数超过最大连接数的80%"
+
+      # MySQL 慢查询告警
+      - alert: MySQLLongQueries
+        expr: rate(mysql_global_status_slow_queries[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: dba
+        annotations:
+          summary: "MySQL 慢查询过多"
+          description: "MySQL {{ $labels.instance }} 慢查询速率超过10/秒"
+
+  # ==================== Redis 告警 ====================
+  - name: redis_alerts
+    rules:
+      # Redis 内存使用率告警
+      - alert: RedisMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          team: infra
+        annotations:
+          summary: "Redis {{ $labels.instance }} 内存使用率过高"
+          description: "Redis 内存使用率超过80%"
+
+      # Redis 连接数告警
+      - alert: RedisConnections
+        expr: redis_connected_clients > 10000
+        for: 5m
+        labels:
+          severity: warning
+          team: infra
+        annotations:
+          summary: "Redis {{ $labels.instance }} 连接数过高"
+          description: "Redis {{ $labels.instance }} 连接数超过10000"
+
+  # ==================== RabbitMQ 告警 ====================
+  - name: rabbitmq_alerts
+    rules:
+      # 队列消息堆积告警
+      - alert: RabbitMQQueueBacklog
+        expr: rabbitmq_queue_messages > 10000
+        for: 5m
+        labels:
+          severity: warning
+          team: infra
+        annotations:
+          summary: "RabbitMQ {{ $labels.queue }} 消息堆积"
+          description: "队列 {{ $labels.queue }} 消息数超过10000，当前值: {{ $value }}"
+
+      # 消费者离线告警
+      - alert: RabbitMQConsumerDown
+        expr: rabbitmq_queue_consumers == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: infra
+        annotations:
+          summary: "RabbitMQ {{ $labels.queue }} 没有消费者"
+          description: "队列 {{ $labels.queue }} 的消费者已全部离线"
+
+  # ==================== MQ 消费者告警 ====================
+  - name: consumer_alerts
+    rules:
+      # 订单消费者处理失败告警
+      - alert: OrderConsumerFailRate
+        expr: rate(order_consumer_messages_total{status="failed"}[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "订单消费者失败率过高"
+          description: "订单消费者失败速率超过10/秒"
+
+      # 库存消费者失败告警
+      - alert: StockConsumerFail
+        expr: stock_consumer_messages_total{status="failed"} > 100
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "库存消费者处理失败"
+          description: "库存消费者失败总数超过100"
+
+  # ==================== 业务指标告警 ====================
+  - name: business_alerts
+    rules:
+      # 下单成功率告警
+      - alert: OrderSuccessRateLow
+        expr: rate(order_service_create_order_success[5m]) / rate(order_service_create_order_total[5m]) < 0.95
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "下单成功率过低"
+          description: "下单成功率低于95%，当前值: {{ $value | humanizePercentage }}"
+
+      # 库存不足告警
+      - alert: ProductStockLow
+        expr: product_stock_count < 10
+        for: 5m
+        labels:
+          severity: warning
+          team: product
+        annotations:
+          summary: "商品 {{ $labels.product_id }} 库存不足"
+          description: "商品 {{ $labels.product_id }} 库存低于10件"

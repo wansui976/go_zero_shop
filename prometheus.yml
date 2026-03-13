@@ -1,0 +1,130 @@
+# Prometheus Configuration for go-zero-shop
+# 监控所有微服务和中间件
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'go-zero-shop'
+    env: 'production'
+
+# Alertmanager 配置
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+# 告警规则文件
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+# 抓取配置
+scrape_configs:
+  # ==================== API Gateway 监控 ====================
+  - job_name: 'api-gateway'
+    static_configs:
+      - targets: ['api-gateway:8080']
+    metrics_path: '/metrics'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+):\d+'
+        replacement: '${1}'
+
+  # ==================== Order RPC 监控 ====================
+  - job_name: 'order-rpc'
+    static_configs:
+      - targets: ['order-rpc:9001']
+    metrics_path: '/metrics'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+):\d+'
+
+  # ==================== Product RPC 监控 ====================
+  - job_name: 'product-rpc'
+    static_configs:
+      - targets: ['product-rpc:9001']
+    metrics_path: '/metrics'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+):\d+'
+
+  # ==================== User RPC 监控 ====================
+  - job_name: 'user-rpc'
+    static_configs:
+      - targets: ['user-rpc:9001']
+    metrics_path: '/metrics'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+):\d+'
+
+  # ==================== Search RPC 监控 ====================
+  - job_name: 'search-rpc'
+    static_configs:
+      - targets: ['search-rpc:9001']
+    metrics_path: '/metrics'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+):\d+'
+
+  # ==================== MQ 消费者监控 ====================
+  - job_name: 'order-consumer'
+    static_configs:
+      - targets: ['order-consumer:8080']
+    metrics_path: '/metrics'
+
+  - job_name: 'stock-consumer'
+    static_configs:
+      - targets: ['stock-consumer:8082']
+    metrics_path: '/metrics'
+
+  - job_name: 'delay-consumer'
+    static_configs:
+      - targets: ['delay-consumer:8081']
+    metrics_path: '/metrics'
+
+  # ==================== Redis 监控 (redis-exporter) ====================
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: redis_host
+        regex: '([^:]+)'
+
+  # ==================== MySQL 监控 (mysqld-exporter) ====================
+  - job_name: 'mysql'
+    static_configs:
+      - targets: ['mysqld-exporter:9104']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: mysql_host
+        regex: '([^:]+)'
+
+  # ==================== RabbitMQ 监控 (rabbitmq-exporter) ====================
+  - job_name: 'rabbitmq'
+    static_configs:
+      - targets: ['rabbitmq-exporter:9419']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: rabbitmq_host
+        regex: '([^:]+)'
+
+  # ==================== Elasticsearch 监控 ====================
+  - job_name: 'elasticsearch'
+    static_configs:
+      - targets: ['elasticsearch-exporter:9114']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: es_host
+        regex: '([^:]+)'
+
+  # ==================== Node Exporter (主机监控) ====================
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']

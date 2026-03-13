@@ -1,0 +1,79 @@
+# /tmp/go_zero_shop_extracted/go_zero_shop/deploy/kubernetes/base/seckill-consumer.yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seckill-consumer
+  namespace: go-zero-shop
+  labels:
+    app: seckill-consumer
+    tier: backend
+    service-type: consumer
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: seckill-consumer
+  template:
+    metadata:
+      labels:
+        app: seckill-consumer
+        tier: backend
+        service-type: consumer
+    spec:
+      serviceAccountName: shop-service-account
+      initContainers:
+        - name: wait-for-rabbitmq
+          image: busybox:1.36
+          command: ['sh', '-c', 'until nc -z rabbitmq-service 5672; do echo waiting for rabbitmq; sleep 2; done;']
+      containers:
+        - name: order-consumer
+          image: go-zero-shop/seckill-consumer:latest
+          imagePullPolicy: IfNotPresent
+          command: ["./order-consumer", "-f", "./etc/order-consumer.yaml"]
+          envFrom:
+            - configMapRef:
+                name: shop-config
+            - secretRef:
+                name: shop-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+        
+        - name: stock-consumer
+          image: go-zero-shop/seckill-consumer:latest
+          imagePullPolicy: IfNotPresent
+          command: ["./stock-consumer", "-f", "./etc/stock-consumer.yaml"]
+          envFrom:
+            - configMapRef:
+                name: shop-config
+            - secretRef:
+                name: shop-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+        
+        - name: delay-consumer
+          image: go-zero-shop/seckill-consumer:latest
+          imagePullPolicy: IfNotPresent
+          command: ["./delay-consumer", "-f", "./etc/delay-consumer.yaml"]
+          envFrom:
+            - configMapRef:
+                name: shop-config
+            - secretRef:
+                name: shop-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

@@ -1,0 +1,31 @@
+Name: api-api
+Host: 0.0.0.0
+Port: 8888
+JwtAuth:
+  AccessSecret: "your-secret-key-here-please-change-in-production"
+  AccessExpire: 604800  # 7 days
+OrderRPC:
+  Endpoints:
+    - 127.0.0.1:8082
+ProductRPC:
+  Endpoints:
+    - 127.0.0.1:8081
+
+UserRPC:
+  Endpoints:
+    - 127.0.0.1:8080
+
+SearchRPC:
+  Endpoints:
+    - 127.0.0.1:8083
+
+CartRPC:
+  Endpoints:
+    - 127.0.0.1:8084
+
+BizRedis:
+  Host: 127.0.0.1:6379
+  Pass:
+  Type: node
+
+DTMServer: "127.0.0.1:36790" # DTM服务的gRPC地址

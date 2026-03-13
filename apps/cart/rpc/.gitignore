@@ -1,0 +1,46 @@
+# Go 项目标准忽略规则
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# 测试输出
+*.test
+*.out
+
+# 代码覆盖率
+*.out
+*.coverprofile
+
+# 依赖管理
+vendor/
+
+# 编辑器和 IDE 相关文件
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 日志文件
+logs/
+*.log
+
+# 配置文件 (仅忽略敏感配置，保留示例配置)
+*.secret
+*.local
+*.private
+
+# 编译输出目录
+bin/
+build/
+
+# 临时文件
+*.tmp
+*.temp
+.cache/
+
+# OS 生成的文件
+.DS_Store
+Thumbs.db

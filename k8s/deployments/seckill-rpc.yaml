@@ -1,0 +1,119 @@
+# /tmp/go_zero_shop_extracted/go_zero_shop/deploy/kubernetes/base/seckill-rpc.yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seckill-rpc
+  namespace: go-zero-shop
+  labels:
+    app: seckill-rpc
+    tier: backend
+    service-type: rpc
+spec:
+  replicas: 3  # 秒杀服务需要更多副本
+  selector:
+    matchLabels:
+      app: seckill-rpc
+  template:
+    metadata:
+      labels:
+        app: seckill-rpc
+        tier: backend
+        service-type: rpc
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9091"
+    spec:
+      serviceAccountName: shop-service-account
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - seckill-rpc
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: seckill-rpc
+          image: go-zero-shop/seckill-rpc:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9003
+              name: grpc
+            - containerPort: 9091
+              name: metrics
+          envFrom:
+            - configMapRef:
+                name: shop-config
+            - secretRef:
+                name: shop-secrets
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          readinessProbe:
+            grpc:
+              port: 9003
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: 9003
+            initialDelaySeconds: 30
+            periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: seckill-rpc-service
+  namespace: go-zero-shop
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9003
+      targetPort: 9003
+      name: grpc
+  selector:
+    app: seckill-rpc
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: seckill-rpc-hpa
+  namespace: go-zero-shop
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: seckill-rpc
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60

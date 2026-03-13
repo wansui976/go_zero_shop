@@ -1,0 +1,44 @@
+# Seckill RMQ Consumer apps Dockerfile
+FROM golang:1.21-alpine AS builder
+
+ARG CGO_ENABLED=0
+ARG GOOS=linux
+ARG GOARCH=arm64
+
+RUN apk add --no-cache git ca-certificates tzdata
+ENV GOPROXY=https://goproxy.cn,direct
+
+WORKDIR /build
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+# 构建多个消费者
+RUN go build -ldflags="-s -w" -o /app/order-consumer ./apps/seckill/rmq/consumer/order_consumer.go
+RUN go build -ldflags="-s -w" -o /app/stock-consumer ./apps/seckill/rmq/consumer/stock_change_consumer.go
+RUN go build -ldflags="-s -w" -o /app/delay-consumer ./apps/seckill/rmq/consumer/delay_queue_consumer.go
+
+FROM alpine:3.19
+
+RUN apk add --no-cache ca-certificates tzdata bash
+ENV TZ=Asia/Shanghai
+
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+WORKDIR /app
+
+COPY --from=builder /app/order-consumer .
+COPY --from=builder /app/stock-consumer .
+COPY --from=builder /app/delay-consumer .
+COPY --from=builder /build/apps/seckill/rmq/etc/*.yaml ./etc/
+
+# 添加启动脚本
+COPY --from=builder /build/apps/seckill/rmq/start.sh .
+
+RUN chown -R appuser:appgroup /app && chmod +x start.sh
+USER appuser
+
+# 消费者不需要暴露端口
+CMD ["./start.sh"]

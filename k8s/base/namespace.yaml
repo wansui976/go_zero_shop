@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: go-zero-shop
+  labels:
+    app.kubernetes.io/name: go-zero-shop
+    app.kubernetes.io/managed-by: kubectl
