@@ -6,7 +6,7 @@ import (
 	"github.com/wansui976/go_zero_shop/apps/app/api/internal/svc"
 	"github.com/wansui976/go_zero_shop/apps/app/api/internal/types"
 	"github.com/wansui976/go_zero_shop/apps/product/rpc/productclient"
-
+	replyclient "github.com/wansui976/go_zero_shop/apps/reply/rpc/replyclient"
 	"github.com/zeromicro/go-zero/core/logx"
 )
 
@@ -26,15 +26,12 @@ func NewProductDetailLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Pro
 }
 
 func (l *ProductDetailLogic) ProductDetail(req *types.ProductDetailRequest) (resp *types.CommonResponse, err error) {
-	var request productclient.ProductItemRequest
-	request.ProductId = req.ProductID
-	response, err := l.svcCtx.ProductRPC.Product(l.ctx, &request)
+	response, err := l.svcCtx.ProductRPC.Product(l.ctx, &productclient.ProductItemRequest{ProductId: req.ProductID})
 	if err != nil {
 		return nil, err
 	}
 
-	var product types.Product
-	product = types.Product{
+	product := &types.Product{
 		Id:                  response.Id,
 		Name:                response.Name,
 		Brief:               response.Brief,
@@ -62,10 +59,23 @@ func (l *ProductDetailLogic) ProductDetail(req *types.ProductDetailRequest) (res
 		UpdateTime:          response.UpdateTime,
 	}
 
-	resp = &types.CommonResponse{
+	detail := &types.ProductDetailResponse{Product: product}
+
+	replyResp, replyErr := l.svcCtx.ReplyRPC.Comments(l.ctx, &replyclient.CommentsRequest{
+		Business: "product",
+		TargetId: req.ProductID,
+		Ps:       3,
+	})
+	if replyErr != nil {
+		l.Errorf("fetch product comments failed: product_id=%d err=%v", req.ProductID, replyErr)
+	} else {
+		detail.Comments = buildProductComments(l.ctx, l.svcCtx.UserRPC, replyResp.Comments)
+		detail.CommentTotal = replyResp.Total
+	}
+
+	return &types.CommonResponse{
 		ResultCode: 200,
 		Msg:        "success",
-		Data:       product,
-	}
-	return resp, nil
+		Data:       detail,
+	}, nil
 }

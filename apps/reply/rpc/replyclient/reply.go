@@ -14,11 +14,20 @@ import (
 )
 
 type (
-	CommentItem      = reply.CommentItem
-	CommentsRequest  = reply.CommentsRequest
-	CommentsResponse = reply.CommentsResponse
+	CommentItem           = reply.CommentItem
+	CommentsRequest       = reply.CommentsRequest
+	CommentsResponse      = reply.CommentsResponse
+	CreateCommentRequest  = reply.CreateCommentRequest
+	CreateCommentResponse = reply.CreateCommentResponse
+	DeleteCommentRequest  = reply.DeleteCommentRequest
+	DeleteCommentResponse = reply.DeleteCommentResponse
+	UpdateCommentRequest  = reply.UpdateCommentRequest
+	UpdateCommentResponse = reply.UpdateCommentResponse
 
 	Reply interface {
+		CreateComment(ctx context.Context, in *CreateCommentRequest, opts ...grpc.CallOption) (*CreateCommentResponse, error)
+		DeleteComment(ctx context.Context, in *DeleteCommentRequest, opts ...grpc.CallOption) (*DeleteCommentResponse, error)
+		UpdateComment(ctx context.Context, in *UpdateCommentRequest, opts ...grpc.CallOption) (*UpdateCommentResponse, error)
 		Comments(ctx context.Context, in *CommentsRequest, opts ...grpc.CallOption) (*CommentsResponse, error)
 	}
 
@@ -31,6 +40,21 @@ func NewReply(cli zrpc.Client) Reply {
 	return &defaultReply{
 		cli: cli,
 	}
+}
+
+func (m *defaultReply) CreateComment(ctx context.Context, in *CreateCommentRequest, opts ...grpc.CallOption) (*CreateCommentResponse, error) {
+	client := reply.NewReplyClient(m.cli.Conn())
+	return client.CreateComment(ctx, in, opts...)
+}
+
+func (m *defaultReply) DeleteComment(ctx context.Context, in *DeleteCommentRequest, opts ...grpc.CallOption) (*DeleteCommentResponse, error) {
+	client := reply.NewReplyClient(m.cli.Conn())
+	return client.DeleteComment(ctx, in, opts...)
+}
+
+func (m *defaultReply) UpdateComment(ctx context.Context, in *UpdateCommentRequest, opts ...grpc.CallOption) (*UpdateCommentResponse, error) {
+	client := reply.NewReplyClient(m.cli.Conn())
+	return client.UpdateComment(ctx, in, opts...)
 }
 
 func (m *defaultReply) Comments(ctx context.Context, in *CommentsRequest, opts ...grpc.CallOption) (*CommentsResponse, error) {

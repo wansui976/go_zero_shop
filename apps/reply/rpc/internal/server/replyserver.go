@@ -23,6 +23,21 @@ func NewReplyServer(svcCtx *svc.ServiceContext) *ReplyServer {
 	}
 }
 
+func (s *ReplyServer) CreateComment(ctx context.Context, in *reply.CreateCommentRequest) (*reply.CreateCommentResponse, error) {
+	l := logic.NewCreateCommentLogic(ctx, s.svcCtx)
+	return l.CreateComment(in)
+}
+
+func (s *ReplyServer) DeleteComment(ctx context.Context, in *reply.DeleteCommentRequest) (*reply.DeleteCommentResponse, error) {
+	l := logic.NewDeleteCommentLogic(ctx, s.svcCtx)
+	return l.DeleteComment(in)
+}
+
+func (s *ReplyServer) UpdateComment(ctx context.Context, in *reply.UpdateCommentRequest) (*reply.UpdateCommentResponse, error) {
+	l := logic.NewUpdateCommentLogic(ctx, s.svcCtx)
+	return l.UpdateComment(in)
+}
+
 func (s *ReplyServer) Comments(ctx context.Context, in *reply.CommentsRequest) (*reply.CommentsResponse, error) {
 	l := logic.NewCommentsLogic(ctx, s.svcCtx)
 	return l.Comments(in)
