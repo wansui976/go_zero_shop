@@ -1,4 +1,3 @@
-# DTM 数据库初始化脚本
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -6,62 +5,70 @@ metadata:
   namespace: go-zero-shop
 data:
   01-dtm-schema.sql: |
-    -- DTM 主数据库
-    CREATE DATABASE IF NOT EXISTS dtm;
-    
+    CREATE DATABASE IF NOT EXISTS dtm DEFAULT CHARSET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    CREATE DATABASE IF NOT EXISTS dtm_barrier DEFAULT CHARSET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
     USE dtm;
-    
-    -- 事务全局表
-    CREATE TABLE IF NOT EXISTS dtm.GLOBAL (
+
+    CREATE TABLE IF NOT EXISTS trans_global (
       id bigint(22) NOT NULL AUTO_INCREMENT,
-      gid varchar(128) NOT NULL COMMENT '全局事务ID',
-      trans_type varchar(45) NOT NULL COMMENT '事务类型',
-      status varchar(45) NOT NULL COMMENT '事务状态',
-      query_prepared varchar(1024) DEFAULT NULL COMMENT '预备查询URL',
-      protocol varchar(45) DEFAULT NULL COMMENT '协议',
+      gid varchar(128) NOT NULL,
+      trans_type varchar(45) DEFAULT NULL,
+      status varchar(45) DEFAULT NULL,
+      query_prepared varchar(1024) DEFAULT NULL,
+      protocol varchar(45) DEFAULT NULL,
+      rollback_time datetime DEFAULT NULL,
+      rollback_reason varchar(1024) DEFAULT NULL,
+      options varchar(1024) DEFAULT NULL,
+      ext_data varchar(1024) DEFAULT NULL,
+      custom_data varchar(1024) DEFAULT NULL,
+      result text DEFAULT NULL,
       create_time datetime DEFAULT NULL,
       update_time datetime DEFAULT NULL,
       finish_time datetime DEFAULT NULL,
-      rollback_time datetime DEFAULT NULL,
-      options varchar(1024) DEFAULT NULL COMMENT '事务选项',
-      ext_data varchar(1024) DEFAULT NULL COMMENT '扩展数据',
-      custom_data varchar(1024) DEFAULT NULL COMMENT '自定义数据',
-      next_cron_interval int(11) DEFAULT NULL COMMENT '下次定时任务间隔',
-      next_cron_time datetime DEFAULT NULL COMMENT '下次定时任务时间',
-      owner_dbid varchar(64) DEFAULT NULL COMMENT '所有者数据库ID',
+      next_cron_interval int DEFAULT NULL,
+      next_cron_time datetime DEFAULT NULL,
+      owner varchar(64) DEFAULT NULL,
       PRIMARY KEY (id),
-      UNIQUE KEY gid (gid),
-      KEY create_time (create_time),
-      KEY update_time (update_time),
-      KEY finish_time (finish_time)
+      UNIQUE KEY uniq_gid (gid),
+      KEY idx_next_cron_time (next_cron_time),
+      KEY idx_update_time (update_time)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-    
-    -- 事务分支表
-    CREATE TABLE IF NOT EXISTS dtm.BRANCH (
+
+    CREATE TABLE IF NOT EXISTS trans_branch_op (
       id bigint(22) NOT NULL AUTO_INCREMENT,
-      gid varchar(128) NOT NULL COMMENT '全局事务ID',
-      branch_id varchar(128) NOT NULL COMMENT '分支ID',
-      op varchar(45) NOT NULL COMMENT '操作类型',
-      status varchar(45) NOT NULL COMMENT '分支状态',
+      gid varchar(128) NOT NULL,
+      branch_id varchar(128) NOT NULL,
+      op varchar(45) NOT NULL,
+      url varchar(1024) DEFAULT NULL,
+      data text DEFAULT NULL,
+      bin_data mediumblob DEFAULT NULL,
+      branch_headers text DEFAULT NULL,
+      status varchar(45) DEFAULT NULL,
       finish_time datetime DEFAULT NULL,
       rollback_time datetime DEFAULT NULL,
       create_time datetime DEFAULT NULL,
       update_time datetime DEFAULT NULL,
       PRIMARY KEY (id),
-      UNIQUE KEY gid_branch (gid, branch_id),
-      KEY create_time (create_time),
-      KEY update_time (update_time),
-      KEY finish_time (finish_time)
+      UNIQUE KEY uniq_gid_branch_op (gid, branch_id, op),
+      KEY idx_update_time (update_time)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-    
+
+    CREATE TABLE IF NOT EXISTS kv (
+      id bigint(22) NOT NULL AUTO_INCREMENT,
+      cat varchar(128) NOT NULL,
+      `k` varchar(128) NOT NULL,
+      `v` text DEFAULT NULL,
+      create_time datetime DEFAULT NULL,
+      update_time datetime DEFAULT NULL,
+      PRIMARY KEY (id),
+      UNIQUE KEY uniq_cat_k (cat, `k`),
+      KEY idx_update_time (update_time)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   02-dtm-barrier-schema.sql: |
-    -- DTM 子事务屏障数据库
-    CREATE DATABASE IF NOT EXISTS dtm_barrier;
-    
     USE dtm_barrier;
-    
-    -- 子事务屏障表
-    CREATE TABLE IF NOT EXISTS dtm_barrier.barrier (
+
+    CREATE TABLE IF NOT EXISTS barrier (
       id bigint(22) NOT NULL AUTO_INCREMENT,
       trans_type varchar(45) DEFAULT NULL,
       gid varchar(128) DEFAULT NULL,
@@ -72,7 +79,6 @@ data:
       create_time datetime DEFAULT NULL,
       update_time datetime DEFAULT NULL,
       PRIMARY KEY (id),
-      UNIQUE KEY gid (gid, branch_id, op, barrier_id),
-      KEY create_time (create_time),
-      KEY update_time (update_time)
+      UNIQUE KEY uniq_barrier (gid, branch_id, op, barrier_id),
+      KEY idx_update_time (update_time)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

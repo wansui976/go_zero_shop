@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elasticsearch-exporter
+  namespace: go-zero-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elasticsearch-exporter
+  template:
+    metadata:
+      labels:
+        app: elasticsearch-exporter
+    spec:
+      initContainers:
+      - name: wait-for-elasticsearch
+        image: busybox:1.36
+        command: ['sh', '-c', 'until nc -z elasticsearch 9200; do echo waiting for elasticsearch; sleep 2; done']
+      containers:
+      - name: elasticsearch-exporter
+        image: prometheuscommunity/elasticsearch-exporter:v1.8.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - --es.uri=http://elasticsearch:9200
+        ports:
+        - containerPort: 9114
+          name: metrics
+        startupProbe:
+          httpGet:
+            path: /metrics
+            port: 9114
+          periodSeconds: 5
+          failureThreshold: 30
+        readinessProbe:
+          httpGet:
+            path: /metrics
+            port: 9114
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: 9114
+          periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch-exporter
+  namespace: go-zero-shop
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: "/metrics"
+    prometheus.io/port: "9114"
+spec:
+  selector:
+    app: elasticsearch-exporter
+  ports:
+  - port: 9114
+    targetPort: 9114
+    name: metrics
+  type: ClusterIP
+  

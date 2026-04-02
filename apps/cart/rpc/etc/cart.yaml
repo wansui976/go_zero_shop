@@ -3,18 +3,18 @@ ListenOn: 0.0.0.0:8084
 
 Etcd:
   Hosts:
-  - 127.0.0.1:2379
+  - etcd:2379
   Key: cart.rpc
 
-DataSource: root:@tcp(127.0.0.1:3306)/cart?charset=utf8mb4&parseTime=true&loc=Local
+DataSource: root:123456@tcp(mysql:3306)/cart?charset=utf8mb4&parseTime=true&loc=Local
 
 CacheRedis:
-  - Host: 127.0.0.1:6379
-    Pass:
+  - Host: redis:6379
+    Pass: ""
     Type: node
 
 Telemetry:
   Name: cart-rpc
   Endpoint: http://jaeger:14268/api/traces
-  Sampler: 1.0  # 采样率，1.0表示100%采样
+  Sampler: 1.0
   Batcher: jaeger

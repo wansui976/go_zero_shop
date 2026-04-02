@@ -3,12 +3,11 @@ package logic
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strconv"
 	"time"
-
-	"github.com/bytedance/sonic"
 	"github.com/wansui976/go_zero_shop/apps/product/rpc/product"
 	"github.com/wansui976/go_zero_shop/apps/search/rpc/internal/svc"
 
@@ -75,7 +74,7 @@ func (l *SyncProductLogic) SyncProductToES(p *product.ProductItem) error {
 		"update_time":         p.UpdateTime,
 	}
 
-	data, err := sonic.Marshal(doc)
+	data, err := json.Marshal(doc)
 	if err != nil {
 		l.Errorf("marshal product doc failed: %v", err)
 		return err

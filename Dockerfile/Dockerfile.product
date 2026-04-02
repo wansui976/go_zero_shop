@@ -1,5 +1,5 @@
 
-FROM golang:1.21-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 ARG CGO_ENABLED=0
 ARG GOOS=linux
@@ -35,6 +35,6 @@ USER appuser
 EXPOSE 8081
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:9001/health || exit 1
+    CMD nc -z localhost 8081 || exit 1
 
 CMD ["./product-rpc", "-f", "./etc/product.yaml"]

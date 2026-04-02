@@ -24,7 +24,7 @@ func NewProductLogic(ctx context.Context, svcCtx *svc.ServiceContext) *ProductLo
 	}
 }
 
-// 这段代码实现了一个单个商品详情查询的业务逻辑，核心功能是根据商品 ID 获取商品信息，
+// 单个商品详情查询，核心功能是根据商品 ID 获取商品信息，
 // 并通过 SingleGroup 实现单机级别的缓存防穿透（避免同一时间大量重复请求穿透到数据库）
 func (l *ProductLogic) Product(in *product.ProductItemRequest) (*product.ProductItem, error) {
 	v, err, _ := l.svcCtx.SingleGroup.Do(fmt.Sprintf("product:%d", in.ProductId), func() (interface{}, error) {

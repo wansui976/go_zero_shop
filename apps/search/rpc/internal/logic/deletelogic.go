@@ -3,11 +3,10 @@ package logic
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
-
-	"github.com/bytedance/sonic"
 	"github.com/wansui976/go_zero_shop/apps/search/rpc/internal/svc"
 	"github.com/wansui976/go_zero_shop/apps/search/rpc/search"
 
@@ -43,7 +42,7 @@ func (l *DeleteLogic) Delete(in *search.DeleteReq) (*search.DeleteResp, error) {
 		meta := map[string]map[string]string{
 			"delete": {"_index": svc.IndexName, "_id": strconv.FormatInt(id, 10)},
 		}
-		line, err := sonic.Marshal(meta)
+		line, err := json.Marshal(meta)
 		if err != nil {
 			errMsg := fmt.Sprintf("marshal delete meta failed for product ID %d: %v", id, err)
 			logx.Error(errMsg)

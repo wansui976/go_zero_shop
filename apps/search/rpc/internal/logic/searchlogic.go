@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"io"
 	"time"
-
-	"github.com/bytedance/sonic"
 	"github.com/wansui976/go_zero_shop/apps/product/rpc/product"
 	"github.com/wansui976/go_zero_shop/apps/search/rpc/internal/cache"
 	"github.com/wansui976/go_zero_shop/apps/search/rpc/internal/svc"
@@ -70,20 +68,17 @@ func (l *SearchLogic) buildSearchQuery(in *search.SearchReq) map[string]interfac
 	// 2. filter: 不影响评分的精确条件（可缓存）
 	filter := []interface{}{}
 
-	// 状态过滤
-	if in.Status == 0 {
-		filter = append(filter, map[string]interface{}{
-			"term": map[string]interface{}{
-				"status": 0,
-			},
-		})
-	} else {
-		filter = append(filter, map[string]interface{}{
-			"term": map[string]interface{}{
-				"status": 1,
-			},
-		})
+	// 状态过滤：proto3 的默认值为 0，而本接口约定默认查询上架商品（status=1）。
+	// 当前 API 层也未暴露 status 参数，因此这里将 0 视为“未指定”，统一回退到 1。
+	status := in.Status
+	if status == 0 {
+		status = 1
 	}
+	filter = append(filter, map[string]interface{}{
+		"term": map[string]interface{}{
+			"status": status,
+		},
+	})
 
 	// 库存过滤
 	if in.HasStock {
@@ -232,7 +227,7 @@ func (l *SearchLogic) executeSearch(query map[string]interface{}) ([]byte, error
 		ctx, cancel := context.WithTimeout(l.ctx, 5*time.Second)
 		defer cancel()
 
-		data, _ := sonic.Marshal(query)
+		data, _ := json.Marshal(query)
 
 		res, err := l.svcCtx.EsClient.Search(
 			l.svcCtx.EsClient.Search.WithContext(ctx),

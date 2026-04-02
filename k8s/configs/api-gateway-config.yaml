@@ -1,4 +1,3 @@
-# API Gateway 配置
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -18,14 +17,34 @@ data:
     ProductRPC:
       Endpoints:
         - product-rpc:8081
-
+    ReplyRPC:
+      Endpoints:
+        - reply-rpc:8086
     UserRPC:
       Endpoints:
         - user-rpc:8080
-
-    ReplyRPC:
+    SearchRPC:
       Endpoints:
-        - reply-rpc:8083
+        - search-rpc:8083
+    CartRPC:
+      Endpoints:
+        - cart-rpc:8084
+    PayRPC:
+      Endpoints:
+        - pay-rpc:8085
+    BizRedis:
+      Host: redis:6379
+      Pass: ""
+      Type: node
+    DtmServer: "dtm:36790"
 
-    DTM:
-      ServerAddr: "dtm:36790"
+    Telemetry:
+      Name: api-gateway
+      Endpoint: http://jaeger:14268/api/traces
+      Sampler: 1.0
+      Batcher: jaeger
+
+    Prometheus:
+      Host: 0.0.0.0
+      Port: 9101
+      Path: /metrics

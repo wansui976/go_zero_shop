@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pay-rpc-config
+  namespace: go-zero-shop
+data:
+  pay.yaml: |
+    Name: pay.rpc
+    ListenOn: 0.0.0.0:8085
+
+    Etcd:
+      Hosts:
+      - etcd:2379
+      Key: pay.rpc
+      Mode: dev
+
+    OrderRpc:
+      Etcd:
+        Hosts:
+          - etcd:2379
+        Key: order.rpc
+
+    DataSource: root:123456@tcp(mysql:3306)/pay?charset=utf8mb4&parseTime=true&loc=Local
+
+    CacheRedis:
+      - Host: redis:6379
+        Pass: ""
+        Type: node
+
+    BizRedis:
+      Host: redis:6379
+      Pass: ""
+      Type: node
+
+    Snowflake:
+      NodeID: 2
+
+    WechatPay:
+      AppID: "your-wechat-app-id"
+      MchID: "your-merchant-id"
+      ApiKey: "your-api-key"
+      NotifyURL: "http://api.shop.local/v1/pay/wechat-callback"
+      TradeType: "NATIVE"
+
+    Alipay:
+      AppID: "your-alipay-app-id"
+      PrivateKey: "your-private-key"
+      PublicKey: "alipay-public-key"
+      NotifyURL: "http://api.shop.local/v1/pay/alipay-callback"
+      ReturnURL: "http://api.shop.local/pay/return"
+
+    Prometheus:
+      Host: 0.0.0.0
+      Port: 9101
+      Path: /metrics
+
+    Telemetry:
+      Name: pay-rpc
+      Endpoint: http://jaeger:14268/api/traces
+      Sampler: 1.0
+      Batcher: jaeger

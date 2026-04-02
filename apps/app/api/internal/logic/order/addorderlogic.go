@@ -2,12 +2,11 @@ package order
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
-
 	"time"
 
-	"encoding/json"
 	"github.com/dtm-labs/dtmgrpc"
 	"github.com/wansui976/go_zero_shop/apps/app/api/internal/middleware"
 	"github.com/wansui976/go_zero_shop/apps/app/api/internal/svc"
@@ -15,6 +14,9 @@ import (
 	"github.com/wansui976/go_zero_shop/apps/order/rpc/order"
 	"github.com/wansui976/go_zero_shop/apps/product/rpc/product"
 	"github.com/zeromicro/go-zero/core/logx"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	otelcodes "go.opentelemetry.io/otel/codes"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -42,6 +44,8 @@ func NewAddOrderLogic(ctx context.Context, svcCtx *svc.ServiceContext) *AddOrder
 }
 
 func (l *AddOrderLogic) AddOrder(req *types.OrderAddReq) (resp *types.CommonResponse, err error) {
+	dtmTracer := otel.Tracer("go-zero-shop/dtm")
+
 	// 1. 提取并验证用户ID
 	uid, err := l.extractUIDFromCtx()
 	if err != nil {
@@ -85,7 +89,17 @@ func (l *AddOrderLogic) AddOrder(req *types.OrderAddReq) (resp *types.CommonResp
 	}
 
 	// 4. 生成全局事务ID
+	_, gidSpan := dtmTracer.Start(l.ctx, "dtm.saga.must_gen_gid")
+	gidSpan.SetAttributes(
+		attribute.String("dtm.server", l.svcCtx.Config.DtmServer),
+		attribute.Int64("user.id", uid),
+		attribute.Int64("order.address_id", addressId),
+		attribute.Int("order.item_count", len(req.Items)),
+		attribute.Int64("order.payment_type", int64(req.PaymentType)),
+	)
 	gid := dtmgrpc.MustGenGid(l.svcCtx.Config.DtmServer)
+	gidSpan.SetAttributes(attribute.String("dtm.gid", gid))
+	gidSpan.End()
 	l.Infof("开始创建订单 uid=%d, gid=%s, 商品种类=%d, 地址ID=%d",
 		uid, gid, len(req.Items), addressId)
 
@@ -93,7 +107,21 @@ func (l *AddOrderLogic) AddOrder(req *types.OrderAddReq) (resp *types.CommonResp
 	productItems, orderItems := l.prepareOrderData(req.Items)
 
 	// 6. 构建Saga事务
+	_, buildSpan := dtmTracer.Start(l.ctx, "dtm.saga.build")
+	buildSpan.SetAttributes(
+		attribute.String("dtm.gid", gid),
+		attribute.String("dtm.server", l.svcCtx.Config.DtmServer),
+		attribute.Int64("user.id", uid),
+		attribute.Int64("order.address_id", addressId),
+		attribute.Int("order.item_count", len(req.Items)),
+		attribute.Int64("order.payment_type", int64(req.PaymentType)),
+	)
 	saga, err := l.buildSagaTransaction(gid, uid, addressId, req.PaymentType, productItems, orderItems)
+	if err != nil {
+		buildSpan.RecordError(err)
+		buildSpan.SetStatus(otelcodes.Error, err.Error())
+	}
+	buildSpan.End()
 	if err != nil {
 		l.Errorf("构建DTM事务失败 uid=%d, gid=%s, err: %v", uid, gid, err)
 		if req.RequestId != "" && l.svcCtx != nil && l.svcCtx.Idemp != nil {
@@ -104,7 +132,18 @@ func (l *AddOrderLogic) AddOrder(req *types.OrderAddReq) (resp *types.CommonResp
 
 	// 7. 提交事务
 	l.Infof("准备提交DTM事务 uid=%d, gid=%s", uid, gid)
+	_, submitSpan := dtmTracer.Start(l.ctx, "dtm.saga.submit")
+	submitSpan.SetAttributes(
+		attribute.String("dtm.gid", gid),
+		attribute.String("dtm.server", l.svcCtx.Config.DtmServer),
+		attribute.Int64("user.id", uid),
+		attribute.Int64("order.address_id", addressId),
+		attribute.Int("order.item_count", len(req.Items)),
+	)
 	if err := saga.Submit(); err != nil {
+		submitSpan.RecordError(err)
+		submitSpan.SetStatus(otelcodes.Error, err.Error())
+		submitSpan.End()
 		l.Errorf("DTM事务提交失败 uid=%d, gid=%s, err: %v", uid, gid, err)
 		// 事务失败，释放幂等占位，允许重试
 		if req.RequestId != "" && l.svcCtx != nil && l.svcCtx.Idemp != nil {
@@ -112,6 +151,7 @@ func (l *AddOrderLogic) AddOrder(req *types.OrderAddReq) (resp *types.CommonResp
 		}
 		return nil, status.Error(codes.Internal, "订单创建失败，请稍后重试")
 	}
+	submitSpan.End()
 
 	l.Infof("订单创建成功 uid=%d, gid=%s", uid, gid)
 

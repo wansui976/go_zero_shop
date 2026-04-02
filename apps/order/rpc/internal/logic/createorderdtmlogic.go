@@ -21,6 +21,7 @@ import (
 	"github.com/wansui976/go_zero_shop/apps/product/rpc/product"
 	"github.com/wansui976/go_zero_shop/apps/user/rpc/user"
 	"github.com/wansui976/go_zero_shop/pkg/snowflake"
+	"github.com/wansui976/go_zero_shop/pkg/traceutil"
 	"github.com/zeromicro/go-zero/core/logx"
 	"github.com/zeromicro/go-zero/core/mr"
 	"golang.org/x/sync/errgroup"
@@ -343,6 +344,7 @@ func (l *CreateOrderDTMLogic) publishOrderCreatedEvent(orderID int64, userID int
 		ContentType:  "application/json",
 		Body:         msg,
 		DeliveryMode: amqp.Persistent,
+		Headers:      traceutil.InjectAMQPHeaders(l.ctx, nil),
 	})
 }
 
@@ -383,6 +385,7 @@ func (l *CreateOrderDTMLogic) publishDelayEvents(orderID int64, userID int64, it
 			ContentType:  "application/json",
 			Body:         body,
 			DeliveryMode: amqp.Persistent,
+			Headers:      traceutil.InjectAMQPHeaders(l.ctx, nil),
 		})
 	}
 
@@ -492,6 +495,10 @@ func stockRevertKey(gid string, productId int64) string {
 
 func preLockStockByGID(ctx context.Context, rdb *redis.Client, productId int64, gid string, quantity int64) error {
 	stockKey := fmt.Sprintf("product:stock:%d", productId)
+	if exists, err := rdb.Exists(ctx, stockKey).Result(); err == nil && exists == 0 {
+		logx.Infof("skip redis prelock because stock key is absent(productId=%d, gid=%s)", productId, gid)
+		return nil
+	}
 	preLockKey := stockPreLockKey(gid, productId)
 	confirmKey := stockConfirmKey(gid, productId)
 	revertKey := stockRevertKey(gid, productId)
@@ -518,6 +525,10 @@ func preLockStockByGID(ctx context.Context, rdb *redis.Client, productId int64, 
 
 func confirmPreLockStockByGID(ctx context.Context, rdb *redis.Client, productId int64, gid string) error {
 	stockKey := fmt.Sprintf("product:stock:%d", productId)
+	if exists, err := rdb.Exists(ctx, stockKey).Result(); err == nil && exists == 0 {
+		logx.Infof("skip redis confirm because stock key is absent(productId=%d, gid=%s)", productId, gid)
+		return nil
+	}
 	preLockKey := stockPreLockKey(gid, productId)
 	confirmKey := stockConfirmKey(gid, productId)
 	revertKey := stockRevertKey(gid, productId)
@@ -530,7 +541,7 @@ func confirmPreLockStockByGID(ctx context.Context, rdb *redis.Client, productId 
 	case 1, 2:
 		return nil
 	case 0:
-		return errors.New("未找到可确认的预扣库存")
+		return nil
 	case 3:
 		return errors.New("库存已回滚，无法确认")
 	default:
@@ -540,6 +551,10 @@ func confirmPreLockStockByGID(ctx context.Context, rdb *redis.Client, productId 
 
 func revertPreLockStockByGID(ctx context.Context, rdb *redis.Client, productId int64, gid string) error {
 	stockKey := fmt.Sprintf("product:stock:%d", productId)
+	if exists, err := rdb.Exists(ctx, stockKey).Result(); err == nil && exists == 0 {
+		logx.Infof("skip redis revert because stock key is absent(productId=%d, gid=%s)", productId, gid)
+		return nil
+	}
 	preLockKey := stockPreLockKey(gid, productId)
 	confirmKey := stockConfirmKey(gid, productId)
 	revertKey := stockRevertKey(gid, productId)

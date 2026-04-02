@@ -14,8 +14,13 @@ import (
 	"github.com/wansui976/go_zero_shop/apps/order/rpc/order"
 	"github.com/wansui976/go_zero_shop/apps/product/rpc/product"
 	"github.com/wansui976/go_zero_shop/apps/seckill/rmq/internal/config"
+	"github.com/wansui976/go_zero_shop/pkg/traceutil"
+	"github.com/zeromicro/go-zero/core/contextx"
 	"github.com/zeromicro/go-zero/core/logx"
 	"github.com/zeromicro/go-zero/zrpc"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	otelcodes "go.opentelemetry.io/otel/codes"
 	"google.golang.org/grpc/status"
 )
 
@@ -31,7 +36,7 @@ type Service struct {
 	ProductRPC product.ProductClient    // 商品RPC客户端
 	OrderRPC   order.OrderServiceClient // 订单RPC客户端
 	waiter     sync.WaitGroup           // 等待组（优雅关闭）
-	msgsChan   []chan *KafkaData        // 消息分片通道数组
+	msgsChan   []chan *queuedKafkaData  // 消息分片通道数组
 	ctx        context.Context          // 全局上下文（用于关闭信号）
 	cancel     context.CancelFunc       // 取消函数（触发协程退出）
 	dtmServer  string                   // DTM协调器地址（从配置读取）
@@ -39,8 +44,14 @@ type Service struct {
 
 // KafkaData Kafka消息结构化数据（秒杀请求：用户ID+商品ID）
 type KafkaData struct {
-	Uid int64 `json:"uid"` // 用户ID（必须>0）
-	Pid int64 `json:"pid"` // 商品ID（必须>0）
+	Uid   int64             `json:"uid"`             // 用户ID（必须>0）
+	Pid   int64             `json:"pid"`             // 商品ID（必须>0）
+	Trace map[string]string `json:"trace,omitempty"` // trace 上下文
+}
+
+type queuedKafkaData struct {
+	ctx  context.Context
+	data *KafkaData
 }
 
 // NewService 创建秒杀消息处理服务实例
@@ -58,7 +69,7 @@ func NewService(c config.Config) *Service {
 		ctx:       ctx,
 		cancel:    cancel,
 		dtmServer: c.DtmServer,
-		msgsChan:  make([]chan *KafkaData, chanCount),
+		msgsChan:  make([]chan *queuedKafkaData, chanCount),
 	}
 
 	// 初始化商品RPC客户端（带超时配置）
@@ -68,7 +79,7 @@ func NewService(c config.Config) *Service {
 
 	// 初始化消息通道并启动消费协程
 	for i := 0; i < chanCount; i++ {
-		ch := make(chan *KafkaData, bufferCount)
+		ch := make(chan *queuedKafkaData, bufferCount)
 		s.msgsChan[i] = ch
 
 		s.waiter.Add(1)
@@ -137,7 +148,7 @@ func (s *Service) registerSignalHandler() {
 
 // consumeDTM DTM TCC分布式事务消费模式（核心逻辑）
 // 参数：ch - 消息通道；chanIdx - 通道索引（日志排查用）
-func (s *Service) consumeDTM(ch chan *KafkaData, chanIdx int) {
+func (s *Service) consumeDTM(ch chan *queuedKafkaData, chanIdx int) {
 	defer s.waiter.Done()
 	logx.Infof("consumeDTM goroutine started (chanIdx:%d)", chanIdx)
 
@@ -159,11 +170,12 @@ func (s *Service) consumeDTM(ch chan *KafkaData, chanIdx int) {
 		case <-s.ctx.Done():
 			logx.Infof("chanIdx:%d consumeDTM goroutine exiting (context canceled)", chanIdx)
 			return
-		case m, ok := <-ch:
+		case msg, ok := <-ch:
 			if !ok {
 				logx.Infof("chanIdx:%d consumeDTM goroutine exiting (channel closed)", chanIdx)
 				return
 			}
+			m := msg.data
 
 			// 消息数据校验（避免无效请求）
 			if err := s.validateKafkaData(m, chanIdx); err != nil {
@@ -173,7 +185,7 @@ func (s *Service) consumeDTM(ch chan *KafkaData, chanIdx int) {
 			logx.Infof("chanIdx:%d receive seckill request: uid:%d, pid:%d", chanIdx, m.Uid, m.Pid)
 
 			// 执行DTM TCC全局事务
-			if err := s.executeTccTransaction(m, productServer, orderServer, chanIdx); err != nil {
+			if err := s.executeTccTransaction(msg.ctx, m, productServer, orderServer, chanIdx); err != nil {
 				// 事务失败：记录错误日志（DTM会自动重试，无需终止协程）
 				logx.Errorf("chanIdx:%d execute TCC transaction failed (uid:%d, pid:%d): %v", chanIdx, m.Uid, m.Pid, err)
 				continue
@@ -198,20 +210,45 @@ func (s *Service) validateKafkaData(data *KafkaData, chanIdx int) error {
 
 // executeTccTransaction 执行DTM TCC全局事务
 func (s *Service) executeTccTransaction(
+	ctx context.Context,
 	data *KafkaData,
 	productServer, orderServer string,
 	chanIdx int,
 ) error {
+	dtmTracer := otel.Tracer("go-zero-shop/dtm")
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx = contextx.ValueOnlyFrom(ctx)
+
 	// 生成DTM全局事务ID（GID）：全局唯一，关联秒杀请求
+	_, gidSpan := dtmTracer.Start(ctx, "dtm.tcc.must_gen_gid")
+	gidSpan.SetAttributes(
+		attribute.String("dtm.server", s.dtmServer),
+		attribute.Int("messaging.partition.channel", chanIdx),
+		attribute.Int64("user.id", data.Uid),
+		attribute.Int64("product.id", data.Pid),
+	)
 	gid := dtmgrpc.MustGenGid(s.dtmServer)
+	gidSpan.SetAttributes(attribute.String("dtm.gid", gid))
+	gidSpan.End()
 
 	logx.Infof("chanIdx:%d start TCC transaction (gid:%s, uid:%d, pid:%d)", chanIdx, gid, data.Uid, data.Pid)
 
 	// 构建带超时和追踪的上下文
-	_, cancel := context.WithTimeout(s.ctx, tccTimeout)
+	txCtx, cancel := context.WithTimeout(ctx, tccTimeout)
 	defer cancel()
 
 	// 发起DTM TCC全局事务
+	txCtx, txSpan := dtmTracer.Start(txCtx, "dtm.tcc.transaction")
+	txSpan.SetAttributes(
+		attribute.String("dtm.gid", gid),
+		attribute.String("dtm.server", s.dtmServer),
+		attribute.Int("messaging.partition.channel", chanIdx),
+		attribute.Int64("user.id", data.Uid),
+		attribute.Int64("product.id", data.Pid),
+	)
 	err := dtmgrpc.TccGlobalTransaction(s.dtmServer, gid, func(tcc *dtmgrpc.TccGrpc) error {
 		// -------------------------- TCC分支1：商品库存操作（Try-Confirm-Cancel） --------------------------
 		// Try：检查库存是否充足 + 预扣库存（预留资源）
@@ -221,6 +258,14 @@ func (s *Service) executeTccTransaction(
 			ProductId: data.Pid,
 			Num:       1, // 秒杀默认扣减1件（可从配置/消息中读取）
 		}
+		_, productBranchSpan := dtmTracer.Start(txCtx, "dtm.tcc.branch.product")
+		productBranchSpan.SetAttributes(
+			attribute.String("dtm.gid", gid),
+			attribute.String("rpc.system", "grpc"),
+			attribute.String("rpc.service", "product.Product"),
+			attribute.Int64("product.id", data.Pid),
+			attribute.Int64("user.id", data.Uid),
+		)
 		if err := tcc.CallBranch(
 			productTryReq,
 			productServer+"/product.Product/CheckAndReserveStock", // Try：检查+预扣
@@ -228,9 +273,13 @@ func (s *Service) executeTccTransaction(
 			productServer+"/product.Product/CancelStockReserve",   // Cancel：回滚预扣
 			&product.UpdateProductStockResponse{},
 		); err != nil {
+			productBranchSpan.RecordError(err)
+			productBranchSpan.SetStatus(otelcodes.Error, err.Error())
+			productBranchSpan.End()
 			// 商品分支失败：返回错误，DTM会触发全局回滚
 			return fmt.Errorf("product TCC branch failed: %w", err)
 		}
+		productBranchSpan.End()
 
 		// -------------------------- TCC分支2：订单创建操作（Try-Confirm-Cancel） --------------------------
 		// Try：检查用户是否重复秒杀 + 创建预订单（预留订单资源）
@@ -249,6 +298,14 @@ func (s *Service) executeTccTransaction(
 				},
 			},
 		}
+		_, orderBranchSpan := dtmTracer.Start(txCtx, "dtm.tcc.branch.order")
+		orderBranchSpan.SetAttributes(
+			attribute.String("dtm.gid", gid),
+			attribute.String("rpc.system", "grpc"),
+			attribute.String("rpc.service", "order.Order"),
+			attribute.Int64("product.id", data.Pid),
+			attribute.Int64("user.id", data.Uid),
+		)
 		if err := tcc.CallBranch(
 			orderTryReq,
 			orderServer+"/order.Order/TryCreateOrder", // Try：检查+创建预订单
@@ -256,15 +313,22 @@ func (s *Service) executeTccTransaction(
 			orderServer+"/order.Order/CancelOrder",    // Cancel：删除预订单
 			&order.CreateOrderResponse{},
 		); err != nil {
+			orderBranchSpan.RecordError(err)
+			orderBranchSpan.SetStatus(otelcodes.Error, err.Error())
+			orderBranchSpan.End()
 			// 订单分支失败：返回错误，DTM会回滚所有已执行分支
 			return fmt.Errorf("order TCC branch failed: %w", err)
 		}
+		orderBranchSpan.End()
 
 		// 所有Try分支成功：返回nil，DTM自动执行Confirm
 		return nil
 	})
 
 	if err != nil {
+		txSpan.RecordError(err)
+		txSpan.SetStatus(otelcodes.Error, err.Error())
+		txSpan.End()
 		// 解析DTM错误（区分业务错误和系统错误）
 		if st, ok := status.FromError(err); ok {
 			return fmt.Errorf("DTM TCC transaction failed (gid:%s, code:%s, message:%s)",
@@ -272,13 +336,14 @@ func (s *Service) executeTccTransaction(
 		}
 		return fmt.Errorf("DTM TCC transaction failed (gid:%s): %w", gid, err)
 	}
+	txSpan.End()
 
 	logx.Infof("chanIdx:%d TCC transaction success (gid:%s, uid:%d, pid:%d)", chanIdx, gid, data.Uid, data.Pid)
 	return nil
 }
 
 // Consume Kafka消息消费入口（实现消费者接口）
-func (s *Service) Consume(_ string, value string) error {
+func (s *Service) Consume(ctx context.Context, _ string, value string) error {
 	logx.Debugf("received kafka raw message: %s", value)
 
 	// 解析Kafka消息（兼容单条消息和批量消息）
@@ -295,9 +360,11 @@ func (s *Service) Consume(_ string, value string) error {
 
 	// 分发消息到分片通道（按Pid取模，同一商品串行处理）
 	for _, data := range dataList {
+		msgCtx := traceutil.ExtractContext(ctx, data.Trace)
+		msgCtx = contextx.ValueOnlyFrom(msgCtx)
 		// 非阻塞发送（避免通道满导致阻塞Consume）
 		select {
-		case s.msgsChan[data.Pid%chanCount] <- data:
+		case s.msgsChan[data.Pid%chanCount] <- &queuedKafkaData{ctx: msgCtx, data: data}:
 			logx.Debugf("dispatch seckill request: uid:%d, pid:%d, chanIdx:%d",
 				data.Uid, data.Pid, data.Pid%chanCount)
 		default:

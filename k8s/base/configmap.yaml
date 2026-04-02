@@ -6,26 +6,15 @@ metadata:
   labels:
     app: go-zero-shop
 data:
-  # 通用配置
   TZ: "Asia/Shanghai"
   LOG_LEVEL: "info"
-  
-  # MySQL 配置
-  MYSQL_HOST: "mysql-service"
+  MYSQL_HOST: "mysql"
   MYSQL_PORT: "3306"
-  MYSQL_DATABASE: "go_zero_shop"
-  
-  # Redis 配置
-  REDIS_HOST: "redis-service"
+  REDIS_HOST: "redis"
   REDIS_PORT: "6379"
-  
-  # Etcd 配置
-  ETCD_HOSTS: "etcd-service:2379"
-  
-  # RabbitMQ 配置
-  RABBITMQ_HOST: "rabbitmq-service"
+  ETCD_HOSTS: "etcd:2379"
+  RABBITMQ_HOST: "rabbitmq"
   RABBITMQ_PORT: "5672"
-  
-  # Jaeger 配置
-  JAEGER_AGENT_HOST: "jaeger-service"
-  JAEGER_AGENT_PORT: "6831"
+  ELASTICSEARCH_HOST: "http://elasticsearch:9200"
+  DTM_GRPC_ADDR: "dtm:36790"
+  JAEGER_COLLECTOR_ENDPOINT: "http://jaeger:14268/api/traces"

@@ -1,95 +1,70 @@
-# 第一部分：持久化存储声明 (PersistentVolumeClaim)
-# 作用：向集群申请一块独立的磁盘空间，确保 Redis 重启或迁移后数据不丢失。
----
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: redis-pvc              # PVC 的名称，稍后在 Deployment 中引用
-  namespace: go-zero-shop      # 命名空间，需确保与应用一致
+  name: redis-pvc
+  namespace: go-zero-shop
 spec:
   accessModes:
-    - ReadWriteOnce            # 读写权限：只能被单个 Node 挂载（适用于单实例数据库）
+    - ReadWriteOnce
   resources:
     requests:
-      storage: 5Gi             # 申请 5GB 的存储容量
-  storageClassName: standard   # 指定存储类名称（视云厂商环境而定，如 gp2, standard 等）
-
-# 第二部分：控制器部署 (Deployment)
-# 作用：管理 Redis 容器的生命周期、资源限制、环境变量及健康检查。
+      storage: 5Gi
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: redis
   namespace: go-zero-shop
-  labels:
-    app: redis                 # 资源标签，用于管理和识别
 spec:
-  replicas: 1                  # 副本数：Redis 单机版设为 1
+  replicas: 1
   selector:
     matchLabels:
-      app: redis               # 必须与 template 中的标签一致，用于匹配 Pod
+      app: redis
   template:
     metadata:
       labels:
-        app: redis             # Pod 的标签
+        app: redis
     spec:
       containers:
-        - name: redis
-          image: redis:7-alpine # 使用基于 Alpine 的轻量级 Redis 7 镜像
-          ports:
-            - containerPort: 6379 # 容器内监听的端口
-          command:              # 覆盖容器默认启动命令
-            - redis-server
-            - --appendonly      # 开启 AOF 持久化，数据更安全
-            - "yes"
-            - --requirepass     # 设置 Redis 访问密码
-            - $(REDIS_PASSWORD) # 引用下方 env 变量
-          env:
-            - name: REDIS_PASSWORD
-              valueFrom:
-                secretKeyRef:   # 从名为 shop-secrets 的 Secret 中安全读取密码
-                  name: shop-secrets
-                  key: REDIS_PASSWORD
-          volumeMounts:
-            - name: redis-data
-              mountPath: /data  # 将申请的磁盘挂载到 Redis 默认数据存放目录
-          resources:            # 资源配额管理
-            requests:
-              cpu: "100m"       # 启动保障：0.1 核
-              memory: "128Mi"   # 启动保障：128MB 内存
-            limits:
-              cpu: "500m"       # 最高限制：0.5 核
-              memory: "512Mi"   # 最高限制：512MB 内存，防止 OOM 影响宿主机
-          # 就绪探针：Pod 启动后，只有 PING 通了才允许接入流量
-          readinessProbe:
-            exec:
-              command: ["redis-cli", "-a", "$(REDIS_PASSWORD)", "ping"]
-            initialDelaySeconds: 10 # 启动 10 秒后开始第一次检查
-            periodSeconds: 5        # 每 5 秒检查一次
-          # 存活探针：如果 Redis 进程死锁，K8s 会自动重启容器
-          livenessProbe:
-            exec:
-              command: ["redis-cli", "-a", "$(REDIS_PASSWORD)", "ping"]
-            initialDelaySeconds: 30 # 给 Redis 预留 30 秒的初始化时间
-            periodSeconds: 10       # 每 10 秒检查一次
-      volumes:
+      - name: redis
+        image: redis:8.4.2-alpine
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 6379
+          name: redis
+        command: ["redis-server", "--appendonly", "yes"]
+        volumeMounts:
         - name: redis-data
-          persistentVolumeClaim:
-            claimName: redis-pvc # 绑定到上面定义的 PVC
-
-# 第三部分：服务暴露 (Service)
-# 作用：为 Redis 提供一个稳定的虚拟 IP 和内网 DNS 地址。
+          mountPath: /data
+        readinessProbe:
+          exec:
+            command: ["redis-cli", "ping"]
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 6
+        livenessProbe:
+          exec:
+            command: ["redis-cli", "ping"]
+          initialDelaySeconds: 60
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 6
+      volumes:
+      - name: redis-data
+        persistentVolumeClaim:
+          claimName: redis-pvc
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: redis-service          # 其他服务通过 redis-service:6379 即可访问
+  name: redis
   namespace: go-zero-shop
 spec:
-  type: ClusterIP              # 仅限集群内部访问
-  ports:
-    - port: 6379               # Service 暴露的端口
-      targetPort: 6379         # 转发到 Pod 的目标端口
   selector:
-    app: redis                 # 通过标签选择器找到对应的 Redis Pod
+    app: redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+    name: redis
+  type: ClusterIP

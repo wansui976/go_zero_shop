@@ -5,8 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
-
-	"github.com/bytedance/sonic"
 	"github.com/wansui976/go_zero_shop/apps/search/rpc/internal/svc"
 	"github.com/wansui976/go_zero_shop/apps/search/rpc/search"
 
@@ -65,7 +63,7 @@ func (l *SearchRelatedLogic) SearchRelated(in *search.SearchRelatedReq) (*search
 	}
 
 	// 序列化查询
-	data, _ := sonic.Marshal(aggQuery)
+	data, _ := json.Marshal(aggQuery)
 
 	// 执行搜索
 	res, err := l.svcCtx.EsClient.Search(

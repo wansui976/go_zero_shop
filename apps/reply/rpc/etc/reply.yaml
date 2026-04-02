@@ -2,15 +2,21 @@ Name: reply.rpc
 ListenOn: 0.0.0.0:8086
 Etcd:
   Hosts:
-  - 127.0.0.1:2379
+  - etcd:2379
   Key: reply.rpc
 
-DataSource: root:@tcp(127.0.0.1:3306)/reply?charset=utf8mb4&parseTime=true&loc=Local
+DataSource: root:123456@tcp(mysql:3306)/reply?charset=utf8mb4&parseTime=true&loc=Local
 
 CacheRedis:
-  - Host: 127.0.0.1:6379
-    Pass:
+  - Host: redis:6379
+    Pass: ""
     Type: node
 
 Snowflake:
   NodeID: 3
+
+Telemetry:
+  Name: reply-rpc
+  Endpoint: http://jaeger:14268/api/traces
+  Sampler: 1.0
+  Batcher: jaeger

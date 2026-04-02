@@ -6,6 +6,7 @@ apiVersion: 1
 datasources:
   # ==================== Prometheus 数据源 ====================
   - name: Prometheus
+    uid: prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
@@ -24,6 +25,7 @@ datasources:
 
   # ==================== Elasticsearch 数据源 ====================
   - name: Elasticsearch
+    uid: elasticsearch
     type: elasticsearch
     access: proxy
     url: http://elasticsearch:9200
@@ -36,6 +38,7 @@ datasources:
 
   # ==================== Jaeger 数据源 ====================
   - name: Jaeger
+    uid: jaeger
     type: jaeger
     access: proxy
     url: http://jaeger:16686

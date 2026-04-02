@@ -1,0 +1,7 @@
+.git
+.gocache
+bin
+logs
+.idea
+.vscode
+*.log

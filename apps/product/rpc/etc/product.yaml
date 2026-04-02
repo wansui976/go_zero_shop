@@ -1,33 +1,31 @@
-# etc/product.yaml
 Name: product.rpc
 ListenOn: 0.0.0.0:8081
 
 Etcd:
   Hosts:
-  - 127.0.0.1:2379
+  - etcd:2379
   Key: product.rpc
-  
-DataSource: root:@tcp(127.0.0.1:3306)/product?charset=utf8mb4&parseTime=true&loc=Local
+
+DataSource: root:123456@tcp(mysql:3306)/product?charset=utf8mb4&parseTime=true&loc=Local
 
 CacheRedis:
-  - Host: 127.0.0.1:6379
-    Pass:
+  - Host: redis:6379
+    Pass: ""
     Type: node
 
 BizRedis:
-  Host: 127.0.0.1:6379
-  Pass:
+  Host: redis:6379
+  Pass: ""
   Type: node
 
-# 修正：AsynqRedis 调整为顶层配置，与 BizRedis 同级
 AsynqRedis:
-  Host: 127.0.0.1:6379 # 与业务Redis同一地址，用DB=1隔离数据
-  Pass: 
+  Host: redis:6379
+  Pass: ""
   Type: node
-  DB: 1 # 单独DB，避免与BizRedis（默认DB=0）数据冲突
+  DB: 1
 
 Telemetry:
   Name: product-rpc
-  Endpoint: http://jaeger:14268/api/traces  # Jaeger 接收地址
-  Sampler: 1.0  # 采集所有请求
-  Batcher: jaeger  # 使用 Jaeger 协议
+  Endpoint: http://jaeger:14268/api/traces
+  Sampler: 1.0
+  Batcher: jaeger

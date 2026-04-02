@@ -1,0 +1,310 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: go-zero-shop
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus-go-zero-shop
+rules:
+- apiGroups: [""]
+  resources: ["nodes", "services", "endpoints", "pods", "namespaces"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-go-zero-shop
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-go-zero-shop
+subjects:
+- kind: ServiceAccount
+  name: prometheus
+  namespace: go-zero-shop
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-pvc
+  namespace: go-zero-shop
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: go-zero-shop
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    rule_files:
+      - /etc/prometheus/rules/*.yml
+
+    scrape_configs:
+      - job_name: prometheus
+        static_configs:
+          - targets: ['localhost:9090']
+
+      - job_name: go-zero-shop-services
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names: ['go-zero-shop']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: metrics
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name]
+            action: replace
+            separator: /
+            target_label: job
+            replacement: $1/$2
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: pod
+          - source_labels: [__meta_kubernetes_endpoint_address_target_name]
+            action: replace
+            target_label: instance
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  namespace: go-zero-shop
+data:
+  alerts.yml: |
+    groups:
+      - name: go-zero-shop-service-availability
+        rules:
+          - alert: GoZeroShopTargetDown
+            expr: up{job=~"go-zero-shop/.+/"} == 0
+            for: 2m
+            labels:
+              severity: critical
+              team: infra
+            annotations:
+              summary: "监控目标不可用: {{ $labels.job }}"
+              description: "{{ $labels.job }} / {{ $labels.instance }} 已连续 2 分钟不可达"
+    
+      - name: go-zero-shop-app-runtime
+        rules:
+          - alert: GoZeroShopAppHighMemory
+            expr: max by(job) (process_resident_memory_bytes{job=~"go-zero-shop/(api-gateway|user-rpc|product-rpc|reply-rpc|cart-rpc|pay-rpc|search-rpc|order-rpc|seckill-rpc)/"}) > 536870912
+            for: 10m
+            labels:
+              severity: warning
+              team: backend
+            annotations:
+              summary: "服务内存占用过高: {{ $labels.job }}"
+              description: "{{ $labels.job }} 常驻内存超过 512 MiB"
+    
+          - alert: GoZeroShopAppHighGoroutines
+            expr: max by(job) (go_goroutines{job=~"go-zero-shop/(api-gateway|user-rpc|product-rpc|reply-rpc|cart-rpc|pay-rpc|search-rpc|order-rpc|seckill-rpc)/"}) > 300
+            for: 10m
+            labels:
+              severity: warning
+              team: backend
+            annotations:
+              summary: "服务 goroutine 偏高: {{ $labels.job }}"
+              description: "{{ $labels.job }} goroutine 数量持续超过 300"
+    
+      - name: go-zero-shop-node
+        rules:
+          - alert: GoZeroShopNodeHighCPU
+            expr: 100 * (1 - avg by(instance) (rate(node_cpu_seconds_total{job="go-zero-shop/node-exporter/",mode="idle"}[5m]))) > 80
+            for: 10m
+            labels:
+              severity: warning
+              team: infra
+            annotations:
+              summary: "节点 CPU 使用率过高"
+              description: "{{ $labels.instance }} CPU 使用率持续超过 80%"
+    
+          - alert: GoZeroShopNodeHighMemory
+            expr: 100 * (1 - (node_memory_MemAvailable_bytes{job="go-zero-shop/node-exporter/"} / node_memory_MemTotal_bytes{job="go-zero-shop/node-exporter/"})) > 85
+            for: 10m
+            labels:
+              severity: warning
+              team: infra
+            annotations:
+              summary: "节点内存使用率过高"
+              description: "{{ $labels.instance }} 内存使用率持续超过 85%"
+    
+          - alert: GoZeroShopNodeHighDiskUsage
+            expr: 100 * (1 - (node_filesystem_avail_bytes{job="go-zero-shop/node-exporter/",mountpoint="/var/lib"} / node_filesystem_size_bytes{job="go-zero-shop/node-exporter/",mountpoint="/var/lib"})) > 85
+            for: 15m
+            labels:
+              severity: warning
+              team: infra
+            annotations:
+              summary: "节点磁盘使用率过高"
+              description: "{{ $labels.instance }} /var/lib 使用率持续超过 85%"
+    
+      - name: go-zero-shop-mysql-redis
+        rules:
+          - alert: GoZeroShopMySQLConnectionsHigh
+            expr: mysql_global_status_threads_connected{job="go-zero-shop/mysqld-exporter/"} / mysql_global_variables_max_connections{job="go-zero-shop/mysqld-exporter/"} > 0.8
+            for: 5m
+            labels:
+              severity: warning
+              team: dba
+            annotations:
+              summary: "MySQL 连接占用过高"
+              description: "MySQL 当前连接数已超过最大连接数的 80%"
+    
+          - alert: GoZeroShopMySQLSlowQueriesHigh
+            expr: rate(mysql_global_status_slow_queries{job="go-zero-shop/mysqld-exporter/"}[5m]) > 1
+            for: 10m
+            labels:
+              severity: warning
+              team: dba
+            annotations:
+              summary: "MySQL 慢查询增多"
+              description: "MySQL 慢查询速率持续超过 1/s"
+    
+          - alert: GoZeroShopRedisConnectionsHigh
+            expr: redis_connected_clients{job="go-zero-shop/redis-exporter/"} > 500
+            for: 10m
+            labels:
+              severity: warning
+              team: infra
+            annotations:
+              summary: "Redis 连接数过高"
+              description: "Redis 当前连接数持续超过 500"
+    
+          - alert: GoZeroShopRedisMemoryHigh
+            expr: redis_memory_used_bytes{job="go-zero-shop/redis-exporter/"} > 1073741824
+            for: 10m
+            labels:
+              severity: warning
+              team: infra
+            annotations:
+              summary: "Redis 内存使用偏高"
+              description: "Redis 已使用内存持续超过 1 GiB"
+    
+      - name: go-zero-shop-rabbitmq-es
+        rules:
+          - alert: GoZeroShopRabbitMQQueueBacklog
+            expr: max by(queue) (rabbitmq_queue_messages{job="go-zero-shop/rabbitmq-exporter/"}) > 1000
+            for: 5m
+            labels:
+              severity: warning
+              team: infra
+            annotations:
+              summary: "RabbitMQ 队列堆积: {{ $labels.queue }}"
+              description: "队列 {{ $labels.queue }} 的消息数持续超过 1000"
+    
+          - alert: GoZeroShopRabbitMQNoConsumers
+            expr: max by(queue) (rabbitmq_queue_messages{job="go-zero-shop/rabbitmq-exporter/"}) > 0 and max by(queue) (rabbitmq_queue_consumers{job="go-zero-shop/rabbitmq-exporter/"}) == 0
+            for: 5m
+            labels:
+              severity: critical
+              team: infra
+            annotations:
+              summary: "RabbitMQ 队列无消费者: {{ $labels.queue }}"
+              description: "队列 {{ $labels.queue }} 有消息但持续 5 分钟没有消费者"
+    
+          - alert: GoZeroShopElasticsearchNotGreen
+            expr: max(elasticsearch_cluster_health_status{job="go-zero-shop/elasticsearch-exporter/",color="green"}) < 1
+            for: 2m
+            labels:
+              severity: warning
+              team: infra
+            annotations:
+              summary: "Elasticsearch 集群非绿色"
+              description: "Elasticsearch 集群状态不是 green"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: go-zero-shop
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: prometheus
+      containers:
+      - name: prometheus
+        image: prom/prometheus:v3
+        imagePullPolicy: IfNotPresent
+        args:
+        - --config.file=/etc/prometheus/prometheus.yml
+        - --storage.tsdb.path=/prometheus
+        - --storage.tsdb.retention.time=7d
+        - --web.enable-lifecycle
+        ports:
+        - containerPort: 9090
+          name: http
+        volumeMounts:
+        - name: config
+          mountPath: /etc/prometheus
+          readOnly: true
+        - name: data
+          mountPath: /prometheus
+        - name: rules
+          mountPath: /etc/prometheus/rules
+          readOnly: true
+        readinessProbe:
+          httpGet:
+            path: /-/ready
+            port: 9090
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /-/healthy
+            port: 9090
+          initialDelaySeconds: 30
+          periodSeconds: 20
+      volumes:
+      - name: config
+        configMap:
+          name: prometheus-config
+      - name: data
+        persistentVolumeClaim:
+          claimName: prometheus-pvc
+      - name: rules
+        configMap:
+          name: prometheus-rules
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: go-zero-shop
+spec:
+  selector:
+    app: prometheus
+  ports:
+  - port: 9090
+    targetPort: 9090
+    name: http
+  type: ClusterIP

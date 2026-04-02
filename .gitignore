@@ -8,3 +8,6 @@ consumer
 *.log
 apps/app/api/api
 apps/order/rpc/rpc
+.tmp-k8s-images/
+mockdata
+runtimeops

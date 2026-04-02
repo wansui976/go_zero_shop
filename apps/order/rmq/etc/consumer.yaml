@@ -2,13 +2,13 @@ Name: order-consumer
 Mode: dev
 
 RabbitMQ:
-  Url: amqp://guest:guest@localhost:5672/
+  Url: amqp://admin:admin123456@rabbitmq:5672/
   PoolSize: 10
 
 Redis:
-  Host: localhost:6379
+  Host: redis:6379
   Type: node
-  Pass:
+  Pass: ""
 
 Log:
   ServiceName: order-consumer
@@ -25,18 +25,16 @@ Prometheus:
   Path: /metrics
 
 Consumer:
-  Workers: 10              # 并发消费数
-  PrefetchCount: 10        # 预取消息数
-  RetryMax: 3              # 最大重试次数
-  RetryInterval: 60        # 重试间隔(秒)
+  Workers: 10
+  PrefetchCount: 10
+  RetryMax: 3
+  RetryInterval: 60
 
-# 队列配置
 Queues:
   - Name: order_create_queue
     Durable: true
     AutoDelete: false
     Exclusive: false
-    
   - Name: order_delay_queue
     Durable: true
     AutoDelete: false
@@ -44,8 +42,7 @@ Queues:
     Args:
       x-dead-letter-exchange: dlx.exchange
       x-dead-letter-routing-key: order.cancel
-      x-message-ttl: 1800000  # 30分钟
-      
+      x-message-ttl: 1800000
   - Name: stock_change_queue
     Durable: true
     AutoDelete: false
