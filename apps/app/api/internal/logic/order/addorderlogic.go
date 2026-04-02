@@ -2,9 +2,9 @@ package order
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
+
 	"time"
 
 	"github.com/dtm-labs/dtmgrpc"
@@ -14,9 +14,6 @@ import (
 	"github.com/wansui976/go_zero_shop/apps/order/rpc/order"
 	"github.com/wansui976/go_zero_shop/apps/product/rpc/product"
 	"github.com/zeromicro/go-zero/core/logx"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	otelcodes "go.opentelemetry.io/otel/codes"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -44,8 +41,6 @@ func NewAddOrderLogic(ctx context.Context, svcCtx *svc.ServiceContext) *AddOrder
 }
 
 func (l *AddOrderLogic) AddOrder(req *types.OrderAddReq) (resp *types.CommonResponse, err error) {
-	dtmTracer := otel.Tracer("go-zero-shop/dtm")
-
 	// 1. 提取并验证用户ID
 	uid, err := l.extractUIDFromCtx()
 	if err != nil {
@@ -89,17 +84,7 @@ func (l *AddOrderLogic) AddOrder(req *types.OrderAddReq) (resp *types.CommonResp
 	}
 
 	// 4. 生成全局事务ID
-	_, gidSpan := dtmTracer.Start(l.ctx, "dtm.saga.must_gen_gid")
-	gidSpan.SetAttributes(
-		attribute.String("dtm.server", l.svcCtx.Config.DtmServer),
-		attribute.Int64("user.id", uid),
-		attribute.Int64("order.address_id", addressId),
-		attribute.Int("order.item_count", len(req.Items)),
-		attribute.Int64("order.payment_type", int64(req.PaymentType)),
-	)
 	gid := dtmgrpc.MustGenGid(l.svcCtx.Config.DtmServer)
-	gidSpan.SetAttributes(attribute.String("dtm.gid", gid))
-	gidSpan.End()
 	l.Infof("开始创建订单 uid=%d, gid=%s, 商品种类=%d, 地址ID=%d",
 		uid, gid, len(req.Items), addressId)
 
@@ -107,43 +92,11 @@ func (l *AddOrderLogic) AddOrder(req *types.OrderAddReq) (resp *types.CommonResp
 	productItems, orderItems := l.prepareOrderData(req.Items)
 
 	// 6. 构建Saga事务
-	_, buildSpan := dtmTracer.Start(l.ctx, "dtm.saga.build")
-	buildSpan.SetAttributes(
-		attribute.String("dtm.gid", gid),
-		attribute.String("dtm.server", l.svcCtx.Config.DtmServer),
-		attribute.Int64("user.id", uid),
-		attribute.Int64("order.address_id", addressId),
-		attribute.Int("order.item_count", len(req.Items)),
-		attribute.Int64("order.payment_type", int64(req.PaymentType)),
-	)
-	saga, err := l.buildSagaTransaction(gid, uid, addressId, req.PaymentType, productItems, orderItems)
-	if err != nil {
-		buildSpan.RecordError(err)
-		buildSpan.SetStatus(otelcodes.Error, err.Error())
-	}
-	buildSpan.End()
-	if err != nil {
-		l.Errorf("构建DTM事务失败 uid=%d, gid=%s, err: %v", uid, gid, err)
-		if req.RequestId != "" && l.svcCtx != nil && l.svcCtx.Idemp != nil {
-			_ = l.svcCtx.Idemp.Delete(l.ctx, req.RequestId)
-		}
-		return nil, status.Error(codes.Internal, "订单服务配置异常，请稍后重试")
-	}
+	saga := l.buildSagaTransaction(gid, uid, addressId, req.PaymentType, productItems, orderItems)
 
 	// 7. 提交事务
 	l.Infof("准备提交DTM事务 uid=%d, gid=%s", uid, gid)
-	_, submitSpan := dtmTracer.Start(l.ctx, "dtm.saga.submit")
-	submitSpan.SetAttributes(
-		attribute.String("dtm.gid", gid),
-		attribute.String("dtm.server", l.svcCtx.Config.DtmServer),
-		attribute.Int64("user.id", uid),
-		attribute.Int64("order.address_id", addressId),
-		attribute.Int("order.item_count", len(req.Items)),
-	)
 	if err := saga.Submit(); err != nil {
-		submitSpan.RecordError(err)
-		submitSpan.SetStatus(otelcodes.Error, err.Error())
-		submitSpan.End()
 		l.Errorf("DTM事务提交失败 uid=%d, gid=%s, err: %v", uid, gid, err)
 		// 事务失败，释放幂等占位，允许重试
 		if req.RequestId != "" && l.svcCtx != nil && l.svcCtx.Idemp != nil {
@@ -151,7 +104,6 @@ func (l *AddOrderLogic) AddOrder(req *types.OrderAddReq) (resp *types.CommonResp
 		}
 		return nil, status.Error(codes.Internal, "订单创建失败，请稍后重试")
 	}
-	submitSpan.End()
 
 	l.Infof("订单创建成功 uid=%d, gid=%s", uid, gid)
 
@@ -162,50 +114,15 @@ func (l *AddOrderLogic) AddOrder(req *types.OrderAddReq) (resp *types.CommonResp
 		_ = l.svcCtx.Rdb.Set(l.ctx, "order:gid_to_request:"+gid, req.RequestId, 24*time.Hour).Err()
 	}
 
-	data := map[string]interface{}{
-		"gid":     gid,
-		"message": "订单处理中，请稍后查看订单状态",
-	}
-	if paymentInfo, err := l.loadPaymentInfoByGID(gid); err != nil {
-		l.Errorf("查询支付信息失败 gid=%s, err: %v", gid, err)
-	} else if paymentInfo != nil {
-		data["order_id"] = paymentInfo.OrderID
-		data["payment_id"] = paymentInfo.PaymentID
-		data["pay_url"] = paymentInfo.PayURL
-		data["expire_time"] = paymentInfo.ExpireTime
-	}
-
 	// 8. 返回成功响应
-	return &types.CommonResponse{ResultCode: 200, Msg: "订单创建成功", Data: data}, nil
-}
-
-type paymentInfoResult struct {
-	OrderID    string
-	PaymentID  string
-	PayURL     string
-	ExpireTime int64
-}
-
-func (l *AddOrderLogic) loadPaymentInfoByGID(gid string) (*paymentInfoResult, error) {
-	if gid == "" || l.svcCtx == nil || l.svcCtx.Rdb == nil {
-		return nil, nil
-	}
-	orderID, err := l.svcCtx.Rdb.Get(l.ctx, "order:gid_to_order:"+gid).Result()
-	if err != nil || orderID == "" {
-		return nil, err
-	}
-	raw, err := l.svcCtx.Rdb.Get(l.ctx, "order:payment_info:"+orderID).Result()
-	if err != nil || raw == "" {
-		return &paymentInfoResult{OrderID: orderID}, err
-	}
-	var result paymentInfoResult
-	if err := json.Unmarshal([]byte(raw), &result); err != nil {
-		return nil, err
-	}
-	if result.OrderID == "" {
-		result.OrderID = orderID
-	}
-	return &result, nil
+	return &types.CommonResponse{
+		ResultCode: 200,
+		Msg:        "订单创建成功",
+		Data: map[string]interface{}{
+			"gid":     gid,
+			"message": "订单处理中，请稍后查看订单状态",
+		},
+	}, nil
 }
 
 // 验证订单请求参数
@@ -292,7 +209,7 @@ func (l *AddOrderLogic) buildSagaTransaction(
 	paymentType int8,
 	productItems []*product.DecrProduct,
 	orderItems []*order.OrderProductItem,
-) (*dtmgrpc.SagaGrpc, error) {
+) *dtmgrpc.SagaGrpc {
 
 	// 构建订单请求
 	addOrderReq := &order.AddOrderRequest{
@@ -308,14 +225,8 @@ func (l *AddOrderLogic) buildSagaTransaction(
 		Items: productItems,
 	}
 
-	productService, err := l.svcCtx.Config.ProductRPC.BuildTarget()
-	if err != nil {
-		return nil, fmt.Errorf("解析商品服务地址失败: %w", err)
-	}
-	orderService, err := l.svcCtx.Config.OrderRPC.BuildTarget()
-	if err != nil {
-		return nil, fmt.Errorf("解析订单服务地址失败: %w", err)
-	}
+	orderService := l.svcCtx.Config.OrderServiceAddr
+	productService := l.svcCtx.Config.ProductServiceAddr
 
 	// 创建Saga事务
 	// 注意：调整顺序，先扣减库存（更容易失败），再创建订单
@@ -331,7 +242,7 @@ func (l *AddOrderLogic) buildSagaTransaction(
 			addOrderReq,
 		)
 
-	return saga, nil
+	return saga
 }
 
 // 从上下文中提取用户ID

@@ -7,9 +7,9 @@ package server
 import (
 	"context"
 
+	"github.com/wansui976/go_zero_shop/apps/order/rpc/order"
 	"github.com/wansui976/go_zero_shop/apps/order/rpc/internal/logic"
 	"github.com/wansui976/go_zero_shop/apps/order/rpc/internal/svc"
-	"github.com/wansui976/go_zero_shop/apps/order/rpc/order"
 )
 
 type OrderServiceServer struct {
@@ -41,16 +41,16 @@ func (s *OrderServiceServer) CreateOrder(ctx context.Context, in *order.CreateOr
 	return l.CreateOrder(in)
 }
 
+// 订单预检（库存检查等）
+func (s *OrderServiceServer) CreateOrderCheck(ctx context.Context, in *order.CreateOrderRequest) (*order.CreateOrderResponse, error) {
+	l := logic.NewCreateOrderCheckLogic(ctx, s.svcCtx)
+	return l.CreateOrderCheck(in)
+}
+
 // 订单回滚（普通下单失败兜底）
 func (s *OrderServiceServer) RollbackOrder(ctx context.Context, in *order.CreateOrderRequest) (*order.CreateOrderResponse, error) {
 	l := logic.NewRollbackOrderLogic(ctx, s.svcCtx)
 	return l.RollbackOrder(in)
-}
-
-// 正式取消订单（用于超时未支付等场景）
-func (s *OrderServiceServer) CancelOrder(ctx context.Context, in *order.CancelOrderRequest) (*order.CancelOrderResponse, error) {
-	l := logic.NewCancelOrderLogic(ctx, s.svcCtx)
-	return l.CancelOrder(in)
 }
 
 // Try：创建半成品订单

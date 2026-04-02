@@ -21,10 +21,11 @@ spec:
         tier: backend
         service-type: consumer
     spec:
+      serviceAccountName: shop-service-account
       initContainers:
         - name: wait-for-rabbitmq
           image: busybox:1.36
-          command: ['sh', '-c', 'until nc -z rabbitmq 5672; do echo waiting for rabbitmq; sleep 2; done;']
+          command: ['sh', '-c', 'until nc -z rabbitmq-service 5672; do echo waiting for rabbitmq; sleep 2; done;']
       containers:
         - name: order-consumer
           image: go-zero-shop/seckill-consumer:latest
@@ -42,19 +43,6 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
-          startupProbe:
-            exec:
-              command: ["sh", "-c", "pidof order-consumer >/dev/null"]
-            periodSeconds: 5
-            failureThreshold: 30
-          readinessProbe:
-            exec:
-              command: ["sh", "-c", "pidof order-consumer >/dev/null"]
-            periodSeconds: 10
-          livenessProbe:
-            exec:
-              command: ["sh", "-c", "pidof order-consumer >/dev/null"]
-            periodSeconds: 20
         
         - name: stock-consumer
           image: go-zero-shop/seckill-consumer:latest
@@ -72,19 +60,6 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
-          startupProbe:
-            exec:
-              command: ["sh", "-c", "pidof stock-consumer >/dev/null"]
-            periodSeconds: 5
-            failureThreshold: 30
-          readinessProbe:
-            exec:
-              command: ["sh", "-c", "pidof stock-consumer >/dev/null"]
-            periodSeconds: 10
-          livenessProbe:
-            exec:
-              command: ["sh", "-c", "pidof stock-consumer >/dev/null"]
-            periodSeconds: 20
         
         - name: delay-consumer
           image: go-zero-shop/seckill-consumer:latest
@@ -102,16 +77,3 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
-          startupProbe:
-            exec:
-              command: ["sh", "-c", "pidof delay-consumer >/dev/null"]
-            periodSeconds: 5
-            failureThreshold: 30
-          readinessProbe:
-            exec:
-              command: ["sh", "-c", "pidof delay-consumer >/dev/null"]
-            periodSeconds: 10
-          livenessProbe:
-            exec:
-              command: ["sh", "-c", "pidof delay-consumer >/dev/null"]
-            periodSeconds: 20

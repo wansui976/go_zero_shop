@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -21,24 +22,26 @@ func GetSearchResult(ctx context.Context, r *redis.Redis, key string) ([]byte, e
 	}
 	data, err := r.GetCtx(ctx, key)
 	if err != nil {
+		if err == redis.Nil {
+			return nil, nil // 缓存未命中
+		}
 		logx.Errorf("Get search cache error: %v", err)
 		return nil, err
-	}
-	if data == "" {
-		return nil, nil // go-zero 的 GetCtx 在 key 不存在时返回 "", nil
 	}
 	return []byte(data), nil
 }
 
 // SetSearchResult 将搜索结果缓存到 Redis
-func SetSearchResult(ctx context.Context, r *redis.Redis, key string, data []byte, expire time.Duration) error {
+func SetSearchResult(ctx context.Context, r *redis.Redis, key string, data interface{}, expire time.Duration) error {
 	if r == nil {
 		return nil
 	}
-	if len(data) == 0 {
-		return nil
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		logx.Errorf("Marshal search result error: %v", err)
+		return err
 	}
-	if err := r.SetexCtx(ctx, key, string(data), int(expire.Seconds())); err != nil {
+	if err := r.SetexCtx(ctx, key, string(jsonData), int(expire.Seconds())); err != nil {
 		logx.Errorf("Set search cache error: %v", err)
 		return err
 	}

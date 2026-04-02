@@ -1,5 +1,5 @@
 # 多阶段构建 - 构建阶段
-FROM golang:1.24-alpine AS builder
+FROM golang:1.21-alpine AS builder
 
 # 设置构建参数
 # - CGO_ENABLED=0：禁用 CGO，生成静态链接二进制文件（无需依赖系统库，可在纯 Alpine 镜像中运行）
@@ -64,7 +64,7 @@ EXPOSE 8080
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD nc -z localhost 8080 || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:9000/health || exit 1
 
 # 启动命令
 CMD ["./user-rpc", "-f", "./etc/user.yaml"]

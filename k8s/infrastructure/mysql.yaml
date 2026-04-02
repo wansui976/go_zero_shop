@@ -1,3 +1,21 @@
+# =============================================================================
+# MySQL 部署配置 - StatefulSet 版本
+# =============================================================================
+# 说明:
+#   - 使用 StatefulSet 确保 MySQL 实例有稳定的网络标识和持久存储
+#   - 数据存储在 PersistentVolumeClaim 中，Pod 重启后数据不丢失
+#   - 健康检查确保 MySQL 完全启动后才接受流量
+#   - 初始化脚本在首次启动时自动执行，创建数据库和表结构
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. PersistentVolumeClaim (PVC) - 持久存储声明
+# -----------------------------------------------------------------------------
+# 用途: 为 MySQL 数据提供持久化存储
+# 特性:
+#   - ReadWriteOnce: 单节点读写模式
+#   - 10Gi 存储空间 (可根据实际需求调整)
+#   - standard 存储类 (适用于大多数 K8s 集群)
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -9,78 +27,181 @@ spec:
   resources:
     requests:
       storage: 10Gi
+  storageClassName: standard
+
 ---
+# -----------------------------------------------------------------------------
+# 2. StatefulSet - MySQL 部署
+# -----------------------------------------------------------------------------
+# 用途: 管理 MySQL Pod 的生命周期
+# 特性:
+#   - 稳定的网络标识: mysql-0.mysql-service.go-zero-shop.svc.cluster.local
+#   - 有序的部署和扩缩容
+#   - 持久化存储 (每个 Pod 有独立的 PVC)
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: mysql
   namespace: go-zero-shop
+  labels:
+    app: mysql
+    # 标签用于服务发现和资源管理
+    tier: database
+    version: "8.0"
 spec:
+  # 服务名称 (用于 StatefulSet 内 Pod 的 DNS 解析)
+  serviceName: mysql-service
+  # 副本数: 1 (主从架构可扩展为 3)
   replicas: 1
+  # Pod 选择器
   selector:
     matchLabels:
       app: mysql
+  # Pod 模板
   template:
     metadata:
       labels:
         app: mysql
+        tier: database
     spec:
+      # 容器配置
       containers:
-      - name: mysql
-        image: mysql:8.4.8
-        imagePullPolicy: IfNotPresent
-        ports:
-        - containerPort: 3306
-          name: mysql
-        env:
-        - name: MYSQL_ROOT_PASSWORD
-          value: "123456"
-        - name: TZ
-          value: "Asia/Shanghai"
-        volumeMounts:
-        - name: mysql-data
-          mountPath: /var/lib/mysql
-        - name: mysql-initdb
-          mountPath: /docker-entrypoint-initdb.d
-        readinessProbe:
-          exec:
-            command: ["mysqladmin", "ping", "-h", "127.0.0.1", "-p123456"]
-          initialDelaySeconds: 20
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 6
-        livenessProbe:
-          exec:
-            command: ["mysqladmin", "ping", "-h", "127.0.0.1", "-p123456"]
-          initialDelaySeconds: 60
-          periodSeconds: 20
-          timeoutSeconds: 5
-          failureThreshold: 6
-        resources:
-          requests:
-            cpu: 250m
-            memory: 512Mi
-          limits:
-            cpu: "1"
-            memory: 2Gi
+        # MySQL 容器
+        - name: mysql
+          image: mysql:8.0
+          # 镜像拉取策略: Always (始终拉取最新)
+          imagePullPolicy: IfNotPresent
+          # 容器端口
+          ports:
+            - containerPort: 3306
+              name: mysql
+              protocol: TCP
+          # 环境变量配置
+          env:
+            # MySQL root 密码 (从 Secrets 引用，保证敏感信息安全)
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shop-secrets
+                  key: MYSQL_ROOT_PASSWORD
+            # 默认数据库名 (从 ConfigMap 引用)
+            - name: MYSQL_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: shop-config
+                  key: MYSQL_DATABASE
+            # 时区配置 (从 ConfigMap 引用)
+            - name: TZ
+              valueFrom:
+                configMapKeyRef:
+                  name: shop-config
+                  key: TZ
+          # 存储卷挂载
+          volumeMounts:
+            # MySQL 数据目录 (持久化存储)
+            - name: mysql-data
+              mountPath: /var/lib/mysql
+            # 数据库初始化脚本 (首次启动时执行)
+            - name: mysql-initdb
+              mountPath: /docker-entrypoint-initdb.d
+            # DTM 初始化脚本 (分布式事务相关)
+            - name: dtm-init
+              mountPath: /docker-entrypoint-initdb.d/dtm
+          # 资源配置
+          resources:
+            # 资源请求 (调度依据)
+            requests:
+              cpu: "250m"     # 0.25 CPU 核心
+              memory: "512Mi" # 512 MB 内存
+            # 资源限制 (防止资源耗尽)
+            limits:
+              cpu: "1000m"    # 1 CPU 核心
+              memory: "2Gi"   # 2 GB 内存
+          # 就绪探针 (Readiness Probe)
+          # 用途: 检查容器是否已就绪并接受流量
+          readinessProbe:
+            exec:
+              command: ["mysqladmin", "ping", "-h", "localhost"]
+            initialDelaySeconds: 30  # 启动后等待 30 秒开始检测
+            periodSeconds: 10       # 每 10 秒检测一次
+            timeoutSeconds: 3       # 检测超时时间
+            failureThreshold: 3     # 连续失败 3 次标记为未就绪
+          # 存活探针 (Liveness Probe)
+          # 用途: 检查容器是否存活，失败时重启容器
+          livenessProbe:
+            exec:
+              command: ["mysqladmin", "ping", "-h", "localhost"]
+            initialDelaySeconds: 60 # 启动后等待 60 秒开始检测
+            periodSeconds: 20        # 每 20 秒检测一次
+            timeoutSeconds: 5        # 检测超时时间
+            failureThreshold: 3      # 连续失败 3 次重启容器
+          # 启动探针 (Startup Probe) - 可选
+          # 用途: 慢启动应用检测，防止在启动期间被健康检查杀死
+          # startupProbe:
+          #   exec:
+          #     command: ["mysqladmin", "ping", "-h", "localhost"]
+          #   initialDelaySeconds: 10
+          #   periodSeconds: 10
+          #   timeoutSeconds: 3
+          #   failureThreshold: 30  # 最多等待 300 秒 (30 * 10)
+      # 非持久化卷 (ConfigMap 类型)
       volumes:
-      - name: mysql-data
-        persistentVolumeClaim:
-          claimName: mysql-pvc
-      - name: mysql-initdb
-        configMap:
-          name: mysql-init-scripts
+        # MySQL 数据卷 (指向 PVC)
+        - name: mysql-data
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+        # 初始化脚本卷 (ConfigMap: mysql-init-scripts)
+        - name: mysql-initdb
+          configMap:
+            name: mysql-init-scripts
+        # DTM 初始化脚本卷 (ConfigMap: dtm-init-sql)
+        - name: dtm-init
+          configMap:
+            name: dtm-init-sql
+
 ---
+# -----------------------------------------------------------------------------
+# 3. Service - MySQL 服务发现
+# -----------------------------------------------------------------------------
+# 用途: 为 MySQL Pod 提供稳定的网络访问入口
+# 特性:
+#   - ClusterIP 类型: 集群内部可访问，外部不可访问
+#   - 负载均衡: 自动将请求分发到 MySQL Pod
 apiVersion: v1
 kind: Service
 metadata:
-  name: mysql
+  name: mysql-service
   namespace: go-zero-shop
+  # 标签 (与 Deployment 保持一致)
+  labels:
+    app: mysql
+    tier: database
 spec:
+  # 服务类型: ClusterIP (默认)
+  # 可改为 NodePort 或 LoadBalancer 以支持外部访问
+  type: ClusterIP
+  # 服务端口配置
+  ports:
+    # MySQL 默认端口
+    - port: 3306
+      targetPort: 3306
+      protocol: TCP
+      name: mysql
+  # 标签选择器 (将服务绑定到 Pod)
   selector:
     app: mysql
-  ports:
-  - port: 3306
-    targetPort: 3306
-    name: mysql
-  type: ClusterIP
+
+# =============================================================================
+# 部署顺序说明:
+#   1. kubectl apply -f base/namespace.yaml        # 创建命名空间
+#   2. kubectl apply -f base/secrets.yaml          # 创建密钥
+#   3. kubectl apply -f base/configmap.yaml         # 创建配置
+#   4. kubectl apply -f configs/mysql-init.yaml    # 创建初始化脚本
+#   5. kubectl apply -f infrastructure/mysql.yaml   # 部署 MySQL
+#
+# 验证命令:
+#   kubectl get pods -n go-zero-shop -l app=mysql
+#   kubectl get pvc -n go-zero-shop
+#   kubectl describe pod mysql-0 -n go-zero-shop
+#   kubectl logs mysql-0 -n go-zero-shop -f
+# =============================================================================

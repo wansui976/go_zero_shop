@@ -103,7 +103,7 @@ func (l *CheckAndUpdateStockLogic) CheckAndUpdateStock(in *product.CheckAndUpdat
 		in.RequestId,
 	)
 	if err != nil {
-		// 完善Redis异常日志（包含上下文信息）
+		// 优化3：完善Redis异常日志（包含上下文信息）
 		l.Errorf("redis eval script failed: productId=%d, requestId=%s, err=%v", in.ProductId, in.RequestId, err)
 		return nil, status.Error(codes.Internal, "库存服务暂时不可用，请稍后重试")
 	}

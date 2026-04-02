@@ -6,8 +6,6 @@ import (
 	"log"
 	"sync"
 	"time"
-
-	"github.com/zeromicro/go-zero/core/contextx"
 )
 
 /*
@@ -85,7 +83,6 @@ func WithInterval(i time.Duration) Option {
 type msg struct {
 	key string      // 分片键（如商品ID、用户ID）
 	val interface{} // 消息内容（业务自定义类型，如KafkaData）
-	ctx context.Context
 }
 
 // Batcher 批量聚合核心结构体
@@ -126,13 +123,8 @@ func (b *Batcher) Start() {
 
 // Add 向批量中添加一条消息（业务层调用的核心方法）
 func (b *Batcher) Add(key string, val interface{}) error {
-	return b.AddWithContext(context.Background(), key, val)
-}
-
-// AddWithContext 向批量中添加一条带上下文的消息
-func (b *Batcher) AddWithContext(ctx context.Context, key string, val interface{}) error {
 	// 1. 计算消息应进入的通道（调用add方法，基于Sharding规则）
-	ch, msg := b.add(ctx, key, val)
+	ch, msg := b.add(key, val)
 
 	// 2. 非阻塞发送消息到通道：若缓冲区满，直接返回ErrFull
 	select {
@@ -145,16 +137,13 @@ func (b *Batcher) AddWithContext(ctx context.Context, key string, val interface{
 }
 
 // add 内部方法：计算分片通道，创建msg实例
-func (b *Batcher) add(ctx context.Context, key string, val interface{}) (chan *msg, *msg) {
+func (b *Batcher) add(key string, val interface{}) (chan *msg, *msg) {
 	// 1. 计算分片索引：Sharding(key) % 协程数（确保分片在[0, worker-1]范围内）
 	sharding := b.Sharding(key) % b.opts.worker
 	// 2. 获取对应的分片通道
 	ch := b.chans[sharding]
 	// 3. 创建msg实例（封装key和val）
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	msg := &msg{key: key, val: val, ctx: contextx.ValueOnlyFrom(ctx)}
+	msg := &msg{key: key, val: val}
 
 	return ch, msg
 }
@@ -175,7 +164,6 @@ func (b *Batcher) merge(idx int, ch <-chan *msg) {
 		closed     bool              // 通道是否已关闭（通过接收nil判断）
 		lastTicker = true            // 标记是否为首次定时器触发（用于调整定时器间隔）
 		interval   = b.opts.interval // 初始时间间隔（后续可能调整）
-		batchCtx   = context.Background()
 		// vals：聚合后的批量数据，key=分片键，val=同一key的消息列表
 		vals = make(map[string][]interface{}, b.opts.size)
 	)
@@ -201,9 +189,6 @@ func (b *Batcher) merge(idx int, ch <-chan *msg) {
 			}
 
 			// 聚合消息：将当前消息添加到对应key的列表中
-			if count == 0 && msg.ctx != nil {
-				batchCtx = msg.ctx
-			}
 			count++
 			vals[msg.key] = append(vals[msg.key], msg.val)
 
@@ -227,10 +212,10 @@ func (b *Batcher) merge(idx int, ch <-chan *msg) {
 
 		// 处理聚合数据：若vals非空，调用Do函数批量处理
 		if len(vals) > 0 {
-			b.Do(batchCtx, vals)                               // 调用业务自定义的批量处理逻辑
+			ctx := context.Background()                        // 创建空上下文（业务层可自定义传递超时等）
+			b.Do(ctx, vals)                                    // 调用业务自定义的批量处理逻辑
 			vals = make(map[string][]interface{}, b.opts.size) // 重置vals，准备下一轮聚合
 			count = 0                                          // 重置计数
-			batchCtx = context.Background()
 		}
 
 		// 若通道已关闭，停止定时器并退出协程

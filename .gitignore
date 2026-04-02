@@ -1,13 +1,29 @@
+# macOS
 .DS_Store
-.gocache/
-logs/
-bin/
-consumer
+
+# IDE
 .idea/
 .vscode/
-*.log
+
+# Go build cache
+.gocache/
+
+# Compiled binaries
 apps/app/api/api
 apps/order/rpc/rpc
-.tmp-k8s-images/
-mockdata
-runtimeops
+apps/product/rpc/rpc
+apps/user/rpc/rpc
+apps/cart/rpc/rpc
+apps/search/rpc/rpc
+apps/reply/rpc/rpc
+apps/seckill/rpc/rpc
+apps/order/rmq/consumer/order_consumer
+apps/order/rmq/consumer/delay_queue_consumer
+apps/order/rmq/consumer/stock_change_consumer
+
+# Logs
+logs/
+*.log
+
+# Test cache
+*.test

@@ -1,0 +1,18 @@
+Name: pay-callback-consumer
+ListenOn: 0.0.0.0:8090
+
+RabbitMQ:
+  Url: amqp://guest:guest@localhost:5672/
+  PoolSize: 10
+
+Redis:
+  Host: localhost:6379
+  Type: node
+  Pass:
+
+DataSource: root:@tcp(127.0.0.1:3306)/pay?charset=utf8mb4&parseTime=true&loc=Local
+
+CacheRedis:
+  - Host: 127.0.0.1:6379
+    Pass:
+    Type: node

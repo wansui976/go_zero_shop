@@ -1,4 +1,5 @@
-FROM golang:1.24-alpine AS builder
+# Seckill RMQ Consumer Dockerfile
+FROM golang:1.21-alpine AS builder
 
 ARG CGO_ENABLED=0
 ARG GOOS=linux

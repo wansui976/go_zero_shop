@@ -2,28 +2,28 @@ Name: user.rpc
 ListenOn: 0.0.0.0:8080
 Etcd:
   Hosts:
-  - etcd:2379
+  - 127.0.0.1:2379
   Key: user.rpc
 
 Mysql:
-  DataSource: root:123456@tcp(mysql:3306)/user?charset=utf8mb4&parseTime=true&loc=Local
+  DataSource: root:@tcp(127.0.0.1:3306)/user?charset=utf8mb4&parseTime=true&loc=Local
 
 CacheRedis:
-  - Host: redis:6379
-    Pass: ""
+  - Host: 127.0.0.1:6379
+    Pass:
     Type: node
 
 BizRedis:
-  Host: redis:6379
+  Host: 127.0.0.1:6379
   Pass: ""
   DB: 0
 
 Salt: "go-zero-user-salt"
 Snowflake:
-  NodeID: 1
-
+  NodeID: 1 # 集群中每个节点需不同（如节点1=1，节点2=2，...，最多1024个节点）
+  
 Telemetry:
   Name: user-rpc
   Endpoint: http://jaeger:14268/api/traces
-  Sampler: 1.0
+  Sampler: 1.0  # 采样率，1.0表示100%采样
   Batcher: jaeger

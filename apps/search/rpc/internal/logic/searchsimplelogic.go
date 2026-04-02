@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/bytedance/sonic"
 	"github.com/wansui976/go_zero_shop/apps/search/rpc/internal/svc"
 	"github.com/wansui976/go_zero_shop/apps/search/rpc/search"
 
@@ -54,11 +56,11 @@ func (l *SearchSimpleLogic) SearchSimple(in *search.SearchSimpleReq) (*search.Se
 	}
 
 	// 序列化并校验错误
-	data, err := json.Marshal(query)
+	data, err := sonic.Marshal(query)
 	if err != nil {
 		errMsg := fmt.Sprintf("marshal simple search query failed: %v", err)
 		logx.Error(errMsg)
-		return nil, fmt.Errorf("%s", errMsg)
+		return nil, fmt.Errorf(errMsg)
 	}
 
 	// 超时控制（10秒）
@@ -74,7 +76,7 @@ func (l *SearchSimpleLogic) SearchSimple(in *search.SearchSimpleReq) (*search.Se
 	if err != nil {
 		errMsg := fmt.Sprintf("es simple search error: %v", err)
 		logx.Error(errMsg)
-		return nil, fmt.Errorf("%s", errMsg)
+		return nil, fmt.Errorf(errMsg)
 	}
 
 	// 解析 ES 返回结果
@@ -93,7 +95,7 @@ func (l *SearchSimpleLogic) SearchSimple(in *search.SearchSimpleReq) (*search.Se
 	if err != nil {
 		errMsg := fmt.Sprintf("decode es simple search result failed: %v", err)
 		logx.Error(errMsg)
-		return nil, fmt.Errorf("%s", errMsg)
+		return nil, fmt.Errorf(errMsg)
 	}
 
 	// 组装商品列表（处理高亮）

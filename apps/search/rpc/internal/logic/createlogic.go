@@ -3,10 +3,11 @@ package logic
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/bytedance/sonic"
 
 	"github.com/wansui976/go_zero_shop/apps/product/rpc/product"
 	"github.com/wansui976/go_zero_shop/apps/search/rpc/internal/svc"
@@ -56,7 +57,7 @@ func (l *CreateLogic) Create(in *search.CreateReq) (*search.CreateResp, error) {
 		deleteMeta := map[string]map[string]string{
 			"delete": {"_index": svc.IndexName, "_id": strconv.FormatInt(p.Id, 10)},
 		}
-		deleteLine, err := json.Marshal(deleteMeta)
+		deleteLine, err := sonic.Marshal(deleteMeta)
 		if err != nil {
 			errMsg := fmt.Sprintf("marshal deleteMeta failed for product %d: %v", p.Id, err)
 			logx.Error(errMsg)
@@ -69,7 +70,7 @@ func (l *CreateLogic) Create(in *search.CreateReq) (*search.CreateResp, error) {
 		meta := map[string]map[string]string{
 			"index": {"_index": svc.IndexName, "_id": strconv.FormatInt(p.Id, 10)},
 		}
-		metaLine, err := json.Marshal(meta)
+		metaLine, err := sonic.Marshal(meta)
 		if err != nil {
 			errMsg := fmt.Sprintf("marshal index meta failed for product %d: %v", p.Id, err)
 			logx.Error(errMsg)
@@ -78,7 +79,7 @@ func (l *CreateLogic) Create(in *search.CreateReq) (*search.CreateResp, error) {
 		bulkBuf.Write(metaLine)
 		bulkBuf.WriteByte('\n')
 
-		data, err := json.Marshal(p)
+		data, err := sonic.Marshal(p)
 		if err != nil {
 			errMsg := fmt.Sprintf("marshal product data failed for product %d: %v", p.Id, err)
 			logx.Error(errMsg)

@@ -3,31 +3,32 @@ ListenOn: 0.0.0.0:8085
 
 Etcd:
   Hosts:
-  - etcd:2379
+  - 127.0.0.1:2379
   Key: pay.rpc
   Mode: dev
 
 OrderRpc:
   Etcd:
     Hosts:
-      - etcd:2379
+      - 127.0.0.1:2379
     Key: order.rpc
 
-DataSource: root:123456@tcp(mysql:3306)/pay?charset=utf8mb4&parseTime=true&loc=Local
+DataSource: root:@tcp(127.0.0.1:3306)/pay?charset=utf8mb4&parseTime=true&loc=Local
 
 CacheRedis:
-  - Host: redis:6379
-    Pass: ""
+  - Host: 127.0.0.1:6379
+    Pass:
     Type: node
 
 BizRedis:
-  Host: redis:6379
-  Pass: ""
+  Host: 127.0.0.1:6379
+  Pass:
   Type: node
 
 Snowflake:
-  NodeID: 2
+  NodeID: 2  # 与其他服务不同
 
+# 微信支付配置
 WechatPay:
   AppID: "your-wechat-app-id"
   MchID: "your-merchant-id"
@@ -35,6 +36,7 @@ WechatPay:
   NotifyURL: "http://your-domain.com/api/pay/wechat-callback"
   TradeType: "NATIVE"
 
+# 支付宝配置
 Alipay:
   AppID: "your-alipay-app-id"
   PrivateKey: "your-private-key"

@@ -19,19 +19,13 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Reply_CreateComment_FullMethodName = "/reply.Reply/CreateComment"
-	Reply_DeleteComment_FullMethodName = "/reply.Reply/DeleteComment"
-	Reply_UpdateComment_FullMethodName = "/reply.Reply/UpdateComment"
-	Reply_Comments_FullMethodName      = "/reply.Reply/Comments"
+	Reply_Comments_FullMethodName = "/reply.Reply/Comments"
 )
 
 // ReplyClient is the client API for Reply service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ReplyClient interface {
-	CreateComment(ctx context.Context, in *CreateCommentRequest, opts ...grpc.CallOption) (*CreateCommentResponse, error)
-	DeleteComment(ctx context.Context, in *DeleteCommentRequest, opts ...grpc.CallOption) (*DeleteCommentResponse, error)
-	UpdateComment(ctx context.Context, in *UpdateCommentRequest, opts ...grpc.CallOption) (*UpdateCommentResponse, error)
 	Comments(ctx context.Context, in *CommentsRequest, opts ...grpc.CallOption) (*CommentsResponse, error)
 }
 
@@ -41,36 +35,6 @@ type replyClient struct {
 
 func NewReplyClient(cc grpc.ClientConnInterface) ReplyClient {
 	return &replyClient{cc}
-}
-
-func (c *replyClient) CreateComment(ctx context.Context, in *CreateCommentRequest, opts ...grpc.CallOption) (*CreateCommentResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(CreateCommentResponse)
-	err := c.cc.Invoke(ctx, Reply_CreateComment_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *replyClient) DeleteComment(ctx context.Context, in *DeleteCommentRequest, opts ...grpc.CallOption) (*DeleteCommentResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(DeleteCommentResponse)
-	err := c.cc.Invoke(ctx, Reply_DeleteComment_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *replyClient) UpdateComment(ctx context.Context, in *UpdateCommentRequest, opts ...grpc.CallOption) (*UpdateCommentResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(UpdateCommentResponse)
-	err := c.cc.Invoke(ctx, Reply_UpdateComment_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *replyClient) Comments(ctx context.Context, in *CommentsRequest, opts ...grpc.CallOption) (*CommentsResponse, error) {
@@ -87,9 +51,6 @@ func (c *replyClient) Comments(ctx context.Context, in *CommentsRequest, opts ..
 // All implementations must embed UnimplementedReplyServer
 // for forward compatibility.
 type ReplyServer interface {
-	CreateComment(context.Context, *CreateCommentRequest) (*CreateCommentResponse, error)
-	DeleteComment(context.Context, *DeleteCommentRequest) (*DeleteCommentResponse, error)
-	UpdateComment(context.Context, *UpdateCommentRequest) (*UpdateCommentResponse, error)
 	Comments(context.Context, *CommentsRequest) (*CommentsResponse, error)
 	mustEmbedUnimplementedReplyServer()
 }
@@ -101,15 +62,6 @@ type ReplyServer interface {
 // pointer dereference when methods are called.
 type UnimplementedReplyServer struct{}
 
-func (UnimplementedReplyServer) CreateComment(context.Context, *CreateCommentRequest) (*CreateCommentResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CreateComment not implemented")
-}
-func (UnimplementedReplyServer) DeleteComment(context.Context, *DeleteCommentRequest) (*DeleteCommentResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DeleteComment not implemented")
-}
-func (UnimplementedReplyServer) UpdateComment(context.Context, *UpdateCommentRequest) (*UpdateCommentResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UpdateComment not implemented")
-}
 func (UnimplementedReplyServer) Comments(context.Context, *CommentsRequest) (*CommentsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Comments not implemented")
 }
@@ -132,60 +84,6 @@ func RegisterReplyServer(s grpc.ServiceRegistrar, srv ReplyServer) {
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&Reply_ServiceDesc, srv)
-}
-
-func _Reply_CreateComment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CreateCommentRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ReplyServer).CreateComment(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Reply_CreateComment_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ReplyServer).CreateComment(ctx, req.(*CreateCommentRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _Reply_DeleteComment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DeleteCommentRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ReplyServer).DeleteComment(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Reply_DeleteComment_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ReplyServer).DeleteComment(ctx, req.(*DeleteCommentRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _Reply_UpdateComment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UpdateCommentRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ReplyServer).UpdateComment(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Reply_UpdateComment_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ReplyServer).UpdateComment(ctx, req.(*UpdateCommentRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _Reply_Comments_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -213,18 +111,6 @@ var Reply_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "reply.Reply",
 	HandlerType: (*ReplyServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "CreateComment",
-			Handler:    _Reply_CreateComment_Handler,
-		},
-		{
-			MethodName: "DeleteComment",
-			Handler:    _Reply_DeleteComment_Handler,
-		},
-		{
-			MethodName: "UpdateComment",
-			Handler:    _Reply_UpdateComment_Handler,
-		},
 		{
 			MethodName: "Comments",
 			Handler:    _Reply_Comments_Handler,

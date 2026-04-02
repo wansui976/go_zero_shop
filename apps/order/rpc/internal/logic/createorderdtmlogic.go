@@ -16,12 +16,9 @@ import (
 	"github.com/wansui976/go_zero_shop/apps/order/rpc/internal/svc"
 	"github.com/wansui976/go_zero_shop/apps/order/rpc/model"
 	"github.com/wansui976/go_zero_shop/apps/order/rpc/order"
-	"github.com/wansui976/go_zero_shop/apps/pay/rpc/pay"
-	"github.com/wansui976/go_zero_shop/apps/pay/rpc/payclient"
 	"github.com/wansui976/go_zero_shop/apps/product/rpc/product"
 	"github.com/wansui976/go_zero_shop/apps/user/rpc/user"
 	"github.com/wansui976/go_zero_shop/pkg/snowflake"
-	"github.com/wansui976/go_zero_shop/pkg/traceutil"
 	"github.com/zeromicro/go-zero/core/logx"
 	"github.com/zeromicro/go-zero/core/mr"
 	"golang.org/x/sync/errgroup"
@@ -253,10 +250,6 @@ func (l *CreateOrderDTMLogic) CreateOrderDTM(in *order.AddOrderRequest) (*order.
 		return nil, err
 	}
 
-	if l.svcCtx != nil && l.svcCtx.Rdb != nil {
-		_ = l.svcCtx.Rdb.Set(l.ctx, "order:gid_to_order:"+in.Gid, orderIDText, 24*time.Hour).Err()
-	}
-
 	// DTM 重试时 Barrier 可能会跳过执行，这里统一以 gid 回查真实 order_id 返回。
 	if existingOrderID, qerr := l.getOrderIDByGID(in.Gid); qerr != nil {
 		logx.Errorf("按gid查询订单失败(gid:%s): %v", in.Gid, qerr)
@@ -264,135 +257,25 @@ func (l *CreateOrderDTMLogic) CreateOrderDTM(in *order.AddOrderRequest) (*order.
 		orderIDText = existingOrderID
 	}
 
-	if err := l.publishOrderCreatedEvent(orderId, in.UserId, in.Items); err != nil {
-		l.Errorf("发布订单创建事件失败(orderId=%d, gid=%s): %v", orderId, in.Gid, err)
+	event := map[string]interface{}{
+		"event":    "OrderCreated",
+		"order_id": orderIDText,
+		"user_id":  in.UserId,
+		"time":     time.Now(),
+		"items":    in.Items,
 	}
-	if err := l.publishDelayEvents(orderId, in.UserId, in.Items); err != nil {
-		l.Errorf("发布订单延迟事件失败(orderId=%d, gid=%s): %v", orderId, in.Gid, err)
-	}
-	if err := l.createPayment(orderIDText, in.UserId, orderTotalAmount(in.Items, productRpcMap), in.PaymentType); err != nil {
-		l.Errorf("创建支付单失败(orderId=%s, gid=%s): %v", orderIDText, in.Gid, err)
+	msg, _ := json.Marshal(event)
+
+	if l.svcCtx != nil && l.svcCtx.RabbitMQ != nil {
+		_ = l.svcCtx.RabbitMQ.Publish("", "order_create_queue", false, false,
+			amqp.Publishing{
+				ContentType:  "application/json",
+				Body:         msg,
+				DeliveryMode: amqp.Persistent,
+			})
 	}
 
 	return &order.AddOrderResponse{OrderId: orderIDText}, nil
-}
-
-func orderTotalAmount(items []*order.OrderProductItem, productRpcMap sync.Map) int64 {
-	var total int64
-	for _, item := range items {
-		if raw, ok := productRpcMap.Load(item.ProductId); ok {
-			if prod, ok := raw.(*product.ProductItem); ok && prod != nil {
-				total += prod.Price * item.Quantity
-			}
-		}
-	}
-	return total
-}
-
-func (l *CreateOrderDTMLogic) createPayment(orderID string, userID int64, amount int64, paymentType int64) error {
-	if l.svcCtx == nil || l.svcCtx.PayRpc == nil || amount <= 0 {
-		return nil
-	}
-	resp, err := l.svcCtx.PayRpc.CreatePayment(l.ctx, &payclient.CreatePaymentReq{
-		OrderId:     orderID,
-		UserId:      userID,
-		Amount:      amount,
-		PaymentType: pay.PaymentType(paymentType),
-	})
-	if err != nil {
-		return err
-	}
-	if l.svcCtx.Rdb != nil && resp != nil {
-		payload, mErr := json.Marshal(map[string]interface{}{
-			"order_id":    orderID,
-			"payment_id":  resp.PaymentId,
-			"pay_url":     resp.PayUrl,
-			"expire_time": resp.ExpireTime,
-		})
-		if mErr == nil {
-			_ = l.svcCtx.Rdb.Set(l.ctx, "order:payment_info:"+orderID, string(payload), 24*time.Hour).Err()
-		}
-	}
-	return nil
-}
-
-func (l *CreateOrderDTMLogic) publishOrderCreatedEvent(orderID int64, userID int64, items []*order.OrderProductItem) error {
-	if l.svcCtx == nil || l.svcCtx.RabbitMQ == nil {
-		return nil
-	}
-
-	type orderCreatedEvent struct {
-		Event   string                    `json:"event"`
-		OrderID int64                     `json:"order_id"`
-		UserID  int64                     `json:"user_id"`
-		Time    time.Time                 `json:"time"`
-		Items   []*order.OrderProductItem `json:"items"`
-	}
-
-	msg, err := json.Marshal(orderCreatedEvent{
-		Event:   "OrderCreated",
-		OrderID: orderID,
-		UserID:  userID,
-		Time:    time.Now(),
-		Items:   items,
-	})
-	if err != nil {
-		return err
-	}
-
-	return l.svcCtx.RabbitMQ.Publish("", "order_create_queue", false, false, amqp.Publishing{
-		ContentType:  "application/json",
-		Body:         msg,
-		DeliveryMode: amqp.Persistent,
-		Headers:      traceutil.InjectAMQPHeaders(l.ctx, nil),
-	})
-}
-
-func (l *CreateOrderDTMLogic) publishDelayEvents(orderID int64, userID int64, items []*order.OrderProductItem) error {
-	if l.svcCtx == nil || l.svcCtx.RabbitMQ == nil {
-		return nil
-	}
-
-	type delayOrderItem struct {
-		ProductID int64 `json:"product_id"`
-		Quantity  int64 `json:"quantity"`
-	}
-	type orderDelayMessage struct {
-		OrderID   int64            `json:"order_id"`
-		UserID    int64            `json:"user_id"`
-		Action    string           `json:"action"`
-		CreatedAt time.Time        `json:"created_at"`
-		Items     []delayOrderItem `json:"items,omitempty"`
-	}
-
-	delayItems := make([]delayOrderItem, 0, len(items))
-	for _, item := range items {
-		delayItems = append(delayItems, delayOrderItem{ProductID: item.ProductId, Quantity: item.Quantity})
-	}
-
-	publish := func(action string) error {
-		body, err := json.Marshal(orderDelayMessage{
-			OrderID:   orderID,
-			UserID:    userID,
-			Action:    action,
-			CreatedAt: time.Now(),
-			Items:     delayItems,
-		})
-		if err != nil {
-			return err
-		}
-		return l.svcCtx.RabbitMQ.Publish("", "order.delay.queue", false, false, amqp.Publishing{
-			ContentType:  "application/json",
-			Body:         body,
-			DeliveryMode: amqp.Persistent,
-			Headers:      traceutil.InjectAMQPHeaders(l.ctx, nil),
-		})
-	}
-
-	if err := publish("remind"); err != nil {
-		return err
-	}
-	return publish("cancel")
 }
 
 func (l *CreateOrderDTMLogic) getOrderIDByGID(gid string) (string, error) {
@@ -429,7 +312,11 @@ if redis.call("EXISTS", revertKey) == 1 then
     return 4
 end
 local available = tonumber(redis.call("HGET", stockKey, "available"))
-if available == nil or available < quantity then
+-- available 字段不存在表示 Redis 库存未初始化，跳过预扣（由 DB 层兜底）
+if available == nil then
+    return 5
+end
+if available < quantity then
     return 0
 end
 redis.call("HINCRBY", stockKey, "available", -quantity)
@@ -495,10 +382,6 @@ func stockRevertKey(gid string, productId int64) string {
 
 func preLockStockByGID(ctx context.Context, rdb *redis.Client, productId int64, gid string, quantity int64) error {
 	stockKey := fmt.Sprintf("product:stock:%d", productId)
-	if exists, err := rdb.Exists(ctx, stockKey).Result(); err == nil && exists == 0 {
-		logx.Infof("skip redis prelock because stock key is absent(productId=%d, gid=%s)", productId, gid)
-		return nil
-	}
 	preLockKey := stockPreLockKey(gid, productId)
 	confirmKey := stockConfirmKey(gid, productId)
 	revertKey := stockRevertKey(gid, productId)
@@ -518,6 +401,8 @@ func preLockStockByGID(ctx context.Context, rdb *redis.Client, productId int64, 
 		return errors.New("库存已确认，禁止重复预扣")
 	case 4:
 		return errors.New("库存已回滚，禁止重复预扣")
+	case 5:
+		return nil // Redis 库存未初始化，跳过预扣（DB 层兜底）
 	default:
 		return errors.New("未知预扣返回码")
 	}
@@ -525,10 +410,6 @@ func preLockStockByGID(ctx context.Context, rdb *redis.Client, productId int64, 
 
 func confirmPreLockStockByGID(ctx context.Context, rdb *redis.Client, productId int64, gid string) error {
 	stockKey := fmt.Sprintf("product:stock:%d", productId)
-	if exists, err := rdb.Exists(ctx, stockKey).Result(); err == nil && exists == 0 {
-		logx.Infof("skip redis confirm because stock key is absent(productId=%d, gid=%s)", productId, gid)
-		return nil
-	}
 	preLockKey := stockPreLockKey(gid, productId)
 	confirmKey := stockConfirmKey(gid, productId)
 	revertKey := stockRevertKey(gid, productId)
@@ -541,7 +422,7 @@ func confirmPreLockStockByGID(ctx context.Context, rdb *redis.Client, productId 
 	case 1, 2:
 		return nil
 	case 0:
-		return nil
+		return errors.New("未找到可确认的预扣库存")
 	case 3:
 		return errors.New("库存已回滚，无法确认")
 	default:
@@ -551,10 +432,6 @@ func confirmPreLockStockByGID(ctx context.Context, rdb *redis.Client, productId 
 
 func revertPreLockStockByGID(ctx context.Context, rdb *redis.Client, productId int64, gid string) error {
 	stockKey := fmt.Sprintf("product:stock:%d", productId)
-	if exists, err := rdb.Exists(ctx, stockKey).Result(); err == nil && exists == 0 {
-		logx.Infof("skip redis revert because stock key is absent(productId=%d, gid=%s)", productId, gid)
-		return nil
-	}
 	preLockKey := stockPreLockKey(gid, productId)
 	confirmKey := stockConfirmKey(gid, productId)
 	revertKey := stockRevertKey(gid, productId)

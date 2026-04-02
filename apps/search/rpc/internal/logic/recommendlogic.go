@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+
+	"github.com/bytedance/sonic"
 	"github.com/wansui976/go_zero_shop/apps/search/rpc/internal/svc"
 	"github.com/wansui976/go_zero_shop/apps/search/rpc/search"
 
@@ -82,7 +84,7 @@ func (l *RecommendLogic) Recommend(in *search.RecommendReq) (*search.SearchResp,
 	}
 
 	// 序列化查询
-	data, _ := json.Marshal(mltQuery)
+	data, _ := sonic.Marshal(mltQuery)
 
 	// 执行搜索
 	res, err := l.svcCtx.EsClient.Search(

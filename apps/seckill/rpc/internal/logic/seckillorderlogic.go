@@ -10,7 +10,6 @@ import (
 	"github.com/wansui976/go_zero_shop/apps/seckill/rpc/internal/svc"
 	"github.com/wansui976/go_zero_shop/apps/seckill/rpc/seckill"
 	"github.com/wansui976/go_zero_shop/pkg/bacher"
-	"github.com/wansui976/go_zero_shop/pkg/traceutil"
 	//"github.com/zeromicro/go-zero/core/collection"
 	"github.com/zeromicro/go-zero/core/limit"
 	"github.com/zeromicro/go-zero/core/logx"
@@ -27,9 +26,8 @@ type SeckillOrderLogic struct {
 }
 
 type KafkaData struct {
-	Uid   int64             `json:"uid"`
-	Pid   int64             `json:"pid"`
-	Trace map[string]string `json:"trace,omitempty"`
+	Uid int64 `json:"uid"`
+	Pid int64 `json:"pid"`
 }
 
 const (
@@ -135,13 +133,11 @@ func (l *SeckillOrderLogic) SeckillOrder(in *seckill.SeckillOrderRequest) (*seck
 
 	//	请求入批量队列
 	KafkaData := &KafkaData{
-		Uid:   in.UserId,
-		Pid:   in.ProductId,
-		Trace: traceutil.InjectMap(l.ctx),
+		Uid: in.UserId,
+		Pid: in.ProductId,
 	}
 	// 将消息添加到批量组件（按商品ID分片，非阻塞，缓冲区满时返回错误）
-	if err = l.batcher.AddWithContext(
-		l.ctx,
+	if err = l.batcher.Add(
 		strconv.FormatInt(in.ProductId, 10),
 		KafkaData,
 	); err != nil {

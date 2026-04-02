@@ -8,7 +8,6 @@ import (
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
-	"github.com/wansui976/go_zero_shop/pkg/traceutil"
 	"github.com/zeromicro/go-zero/core/logx"
 )
 
@@ -36,11 +35,6 @@ type RabbitMQ struct {
 type channelPool struct {
 	pool chan *amqp.Channel
 	r    *RabbitMQ
-}
-
-type DeliveryWithContext struct {
-	Context  context.Context
-	Delivery amqp.Delivery
 }
 
 // 初始化信道池
@@ -377,34 +371,6 @@ func (r *RabbitMQ) Consume(queueName, consumer string, autoAck, exclusive, noLoc
 
 	logx.Infof("消费者启动成功（队列: %s，消费者标签: %s）", queueName, consumer)
 	return deliveryChan, nil
-}
-
-func DeliveryContext(baseCtx context.Context, delivery amqp.Delivery) context.Context {
-	if baseCtx == nil {
-		baseCtx = context.Background()
-	}
-
-	return traceutil.ExtractAMQPContext(baseCtx, delivery.Headers)
-}
-
-func (r *RabbitMQ) ConsumeWithContext(baseCtx context.Context, queueName, consumer string, autoAck, exclusive, noLocal, noWait bool, args amqp.Table) (<-chan DeliveryWithContext, error) {
-	deliveryChan, err := r.Consume(queueName, consumer, autoAck, exclusive, noLocal, noWait, args)
-	if err != nil {
-		return nil, err
-	}
-
-	out := make(chan DeliveryWithContext)
-	go func() {
-		defer close(out)
-		for delivery := range deliveryChan {
-			out <- DeliveryWithContext{
-				Context:  DeliveryContext(baseCtx, delivery),
-				Delivery: delivery,
-			}
-		}
-	}()
-
-	return out, nil
 }
 
 // Qos 设置消费限流（避免消费者过载）

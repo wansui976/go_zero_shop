@@ -1,17 +1,17 @@
-services:
-  # 统一禁用容器内代理，避免 etcd/gRPC 等内部流量被错误转发到宿主代理
+version: '3.8'
 
+services:
   # ==================== 基础设施 ====================
   mysql:
-    image: mysql:8.4.8
+    image: mysql:8.0
     container_name: shop-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_ROOT_PASSWORD: root123456
       MYSQL_DATABASE: go_zero_shop
       TZ: Asia/Shanghai
     ports:
-      - "13306:3306"
+      - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./init-sql:/docker-entrypoint-initdb.d
@@ -24,61 +24,44 @@ services:
       retries: 5
 
   redis:
-    image: redis:8.4.2-alpine
+    image: redis:7-alpine
     container_name: shop-redis
     restart: unless-stopped
     ports:
-      - "16379:6379"
-    command: redis-server --appendonly yes
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass redis123456
     volumes:
       - redis_data:/data
     networks:
       - shop-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "redis123456", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   etcd:
-    image: quay.io/coreos/etcd:v3.5.15
+    image: bitnami/etcd:3.5
     container_name: shop-etcd
     restart: unless-stopped
     environment:
-      HTTP_PROXY: ""
-      HTTPS_PROXY: ""
-      ALL_PROXY: ""
-      http_proxy: ""
-      https_proxy: ""
-      all_proxy: ""
-      NO_PROXY: "localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,jaeger,prometheus,grafana,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway"
-      no_proxy: "localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,jaeger,prometheus,grafana,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway"
-    command:
-      - /usr/local/bin/etcd
-      - --name=etcd
-      - --data-dir=/etcd-data
-      - --listen-client-urls=http://0.0.0.0:2379
-      - --advertise-client-urls=http://etcd:2379
-      - --listen-peer-urls=http://0.0.0.0:2380
-      - --initial-advertise-peer-urls=http://etcd:2380
-      - --initial-cluster=etcd=http://etcd:2380
-      - --initial-cluster-token=shop-etcd
-      - --initial-cluster-state=new
+      - ALLOW_NONE_AUTHENTICATION=yes
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd:2379
     ports:
-      - "12379:2379"
-      - "12380:2380"
+      - "2379:2379"
+      - "2380:2380"
     volumes:
-      - etcd_data:/etcd-data
+      - etcd_data:/bitnami/etcd
     networks:
       - shop-network
     healthcheck:
-      test: ["CMD", "/usr/local/bin/etcdctl", "--endpoints=http://localhost:2379", "endpoint", "health"]
+      test: ["CMD", "etcdctl", "endpoint", "health"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   rabbitmq:
-    image: rabbitmq:4.2.4-management-alpine
+    image: rabbitmq:3.12-management-alpine
     container_name: shop-rabbitmq
     restart: unless-stopped
     environment:
@@ -97,85 +80,19 @@ services:
       timeout: 5s
       retries: 5
 
-  dtm:
-    image: yedf/dtm:latest
-    container_name: shop-dtm
-    restart: unless-stopped
-    environment:
-      STORE_DRIVER: mysql
-      STORE_HOST: mysql
-      STORE_PORT: 3306
-      STORE_USER: root
-      STORE_PASSWORD: "123456"
-      STORE_DB: dtm
-      MICRO_SERVICE_DRIVER: dtm-driver-gozero
-      MICRO_SERVICE_TARGET: etcd://etcd:2379/dtmservice
-      MICRO_SERVICE_END_POINT: dtm:36790
-      IS_DOCKER: "1"
-      HTTP_PROXY: ""
-      HTTPS_PROXY: ""
-      ALL_PROXY: ""
-      http_proxy: ""
-      https_proxy: ""
-      all_proxy: ""
-      NO_PROXY: "localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,dtm,jaeger,prometheus,grafana,elasticsearch,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway"
-      no_proxy: "localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,dtm,jaeger,prometheus,grafana,elasticsearch,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway"
-    ports:
-      - "36789:36789"
-      - "36790:36790"
-    depends_on:
-      mysql:
-        condition: service_healthy
-      etcd:
-        condition: service_healthy
-    networks:
-      - shop-network
-
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
-    container_name: shop-elasticsearch
-    restart: unless-stopped
-    environment:
-      discovery.type: single-node
-      xpack.security.enabled: "false"
-      xpack.security.autoconfiguration.enabled: "false"
-      ES_JAVA_OPTS: -Xms512m -Xmx512m
-      HTTP_PROXY: ""
-      HTTPS_PROXY: ""
-      ALL_PROXY: ""
-      http_proxy: ""
-      https_proxy: ""
-      all_proxy: ""
-      NO_PROXY: "localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,dtm,jaeger,prometheus,grafana,elasticsearch,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway"
-      no_proxy: "localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,dtm,jaeger,prometheus,grafana,elasticsearch,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway"
-    ports:
-      - "9200:9200"
-    volumes:
-      - elasticsearch_data:/usr/share/elasticsearch/data
-    networks:
-      - shop-network
-
   # ==================== RPC 服务 ====================
   user-rpc:
     build:
-      context: .
+      context: ../../
       dockerfile: Dockerfile/Dockerfile.user
     container_name: shop-user-rpc
     restart: unless-stopped
     ports:
-      - "9000:8080"
+      - "9000:9000"
     environment:
       - MYSQL_HOST=mysql
       - REDIS_HOST=redis
       - ETCD_HOST=etcd
-      - HTTP_PROXY=
-      - HTTPS_PROXY=
-      - ALL_PROXY=
-      - http_proxy=
-      - https_proxy=
-      - all_proxy=
-      - NO_PROXY=localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,jaeger,prometheus,grafana,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway
-      - no_proxy=localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,jaeger,prometheus,grafana,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway
     depends_on:
       mysql:
         condition: service_healthy
@@ -188,24 +105,16 @@ services:
 
   product-rpc:
     build:
-      context: .
+      context: ../../
       dockerfile: Dockerfile/Dockerfile.product
     container_name: shop-product-rpc
     restart: unless-stopped
     ports:
-      - "9001:8081"
+      - "9001:9001"
     environment:
       - MYSQL_HOST=mysql
       - REDIS_HOST=redis
       - ETCD_HOST=etcd
-      - HTTP_PROXY=
-      - HTTPS_PROXY=
-      - ALL_PROXY=
-      - http_proxy=
-      - https_proxy=
-      - all_proxy=
-      - NO_PROXY=localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,jaeger,prometheus,grafana,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway
-      - no_proxy=localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,jaeger,prometheus,grafana,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway
     depends_on:
       mysql:
         condition: service_healthy
@@ -218,24 +127,16 @@ services:
 
   order-rpc:
     build:
-      context: .
+      context: ../../
       dockerfile: Dockerfile/Dockerfile.order
     container_name: shop-order-rpc
     restart: unless-stopped
     ports:
-      - "9002:8082"
+      - "9002:9002"
     environment:
       - MYSQL_HOST=mysql
       - REDIS_HOST=redis
       - ETCD_HOST=etcd
-      - HTTP_PROXY=
-      - HTTPS_PROXY=
-      - ALL_PROXY=
-      - http_proxy=
-      - https_proxy=
-      - all_proxy=
-      - NO_PROXY=localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,jaeger,prometheus,grafana,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway
-      - no_proxy=localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,jaeger,prometheus,grafana,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway
     depends_on:
       mysql:
         condition: service_healthy
@@ -252,13 +153,12 @@ services:
 
   seckill-rpc:
     build:
-      context: .
+      context: ../../
       dockerfile: Dockerfile/Dockerfile.seckill
     container_name: shop-seckill-rpc
-    profiles: ["experimental"]
     restart: unless-stopped
     ports:
-      - "9003:9889"
+      - "9003:9003"
     environment:
       - MYSQL_HOST=mysql
       - REDIS_HOST=redis
@@ -278,24 +178,16 @@ services:
 
   cart-rpc:
     build:
-      context: .
+      context: ../../
       dockerfile: Dockerfile/Dockerfile.cart
     container_name: shop-cart-rpc
     restart: unless-stopped
     ports:
-      - "9004:8084"
+      - "9004:9004"
     environment:
       - MYSQL_HOST=mysql
       - REDIS_HOST=redis
       - ETCD_HOST=etcd
-      - HTTP_PROXY=
-      - HTTPS_PROXY=
-      - ALL_PROXY=
-      - http_proxy=
-      - https_proxy=
-      - all_proxy=
-      - NO_PROXY=localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,jaeger,prometheus,grafana,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway
-      - no_proxy=localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,jaeger,prometheus,grafana,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway
     depends_on:
       mysql:
         condition: service_healthy
@@ -308,25 +200,17 @@ services:
 
   pay-rpc:
     build:
-      context: .
+      context: ../../
       dockerfile: Dockerfile/Dockerfile.pay
     container_name: shop-pay-rpc
     restart: unless-stopped
     ports:
-      - "9005:8085"
+      - "9005:9005"
     environment:
       - MYSQL_HOST=mysql
       - REDIS_HOST=redis
       - ETCD_HOST=etcd
       - RABBITMQ_HOST=rabbitmq
-      - HTTP_PROXY=
-      - HTTPS_PROXY=
-      - ALL_PROXY=
-      - http_proxy=
-      - https_proxy=
-      - all_proxy=
-      - NO_PROXY=localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,jaeger,prometheus,grafana,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway
-      - no_proxy=localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,jaeger,prometheus,grafana,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway
     depends_on:
       mysql:
         condition: service_healthy
@@ -341,25 +225,16 @@ services:
 
   search-rpc:
     build:
-      context: .
+      context: ../../
       dockerfile: Dockerfile/Dockerfile.search
     container_name: shop-search-rpc
-    profiles: ["optional"]
     restart: unless-stopped
     ports:
-      - "9006:8083"
+      - "9006:9006"
     environment:
       - MYSQL_HOST=mysql
       - REDIS_HOST=redis
       - ETCD_HOST=etcd
-      - HTTP_PROXY=
-      - HTTPS_PROXY=
-      - ALL_PROXY=
-      - http_proxy=
-      - https_proxy=
-      - all_proxy=
-      - NO_PROXY=localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,jaeger,prometheus,grafana,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway
-      - no_proxy=localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,jaeger,prometheus,grafana,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway
     depends_on:
       mysql:
         condition: service_healthy
@@ -367,17 +242,14 @@ services:
         condition: service_healthy
       etcd:
         condition: service_healthy
-      elasticsearch:
-        condition: service_started
     networks:
       - shop-network
 
   recommend-rpc:
     build:
-      context: .
+      context: ../../
       dockerfile: Dockerfile/Dockerfile.recommend
     container_name: shop-recommend-rpc
-    profiles: ["experimental"]
     restart: unless-stopped
     ports:
       - "9007:9007"
@@ -397,24 +269,16 @@ services:
 
   reply-rpc:
     build:
-      context: .
+      context: ../../
       dockerfile: Dockerfile/Dockerfile.reply
     container_name: shop-reply-rpc
     restart: unless-stopped
     ports:
-      - "9008:8086"
+      - "9008:9008"
     environment:
       - MYSQL_HOST=mysql
       - REDIS_HOST=redis
       - ETCD_HOST=etcd
-      - HTTP_PROXY=
-      - HTTPS_PROXY=
-      - ALL_PROXY=
-      - http_proxy=
-      - https_proxy=
-      - all_proxy=
-      - NO_PROXY=localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,jaeger,prometheus,grafana,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway
-      - no_proxy=localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,jaeger,prometheus,grafana,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway
     depends_on:
       mysql:
         condition: service_healthy
@@ -428,7 +292,7 @@ services:
   # ==================== API Gateway ====================
   api-gateway:
     build:
-      context: .
+      context: ../../
       dockerfile: Dockerfile/Dockerfile.api
     container_name: shop-api-gateway
     restart: unless-stopped
@@ -445,29 +309,20 @@ services:
       - RECOMMEND_RPC_HOST=recommend-rpc
       - REPLY_RPC_HOST=reply-rpc
       - ETCD_HOST=etcd
-      - HTTP_PROXY=
-      - HTTPS_PROXY=
-      - ALL_PROXY=
-      - http_proxy=
-      - https_proxy=
-      - all_proxy=
-      - NO_PROXY=localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,jaeger,prometheus,grafana,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway
-      - no_proxy=localhost,127.0.0.1,mysql,redis,etcd,rabbitmq,jaeger,prometheus,grafana,user-rpc,product-rpc,order-rpc,cart-rpc,pay-rpc,reply-rpc,search-rpc,api-gateway
     depends_on:
       - user-rpc
       - product-rpc
       - order-rpc
-      - dtm
+      - seckill-rpc
     networks:
       - shop-network
 
   # ==================== 消息队列消费者 ====================
   seckill-rmq:
     build:
-      context: .
+      context: ../../
       dockerfile: Dockerfile/Dockerfile.seckill.rmq
     container_name: shop-seckill-rmq
-    profiles: ["experimental"]
     restart: unless-stopped
     environment:
       - RABBITMQ_HOST=rabbitmq
@@ -485,10 +340,9 @@ services:
 
   order-rmq:
     build:
-      context: .
+      context: ../../
       dockerfile: Dockerfile/Dockerfile.order.rmq
     container_name: shop-order-rmq
-    profiles: ["experimental"]
     restart: unless-stopped
     environment:
       - RABBITMQ_HOST=rabbitmq
@@ -506,10 +360,9 @@ services:
 
   pay-rmq:
     build:
-      context: .
+      context: ../../
       dockerfile: Dockerfile/Dockerfile.pay.rmq
     container_name: shop-pay-rmq
-    profiles: ["experimental"]
     restart: unless-stopped
     environment:
       - RABBITMQ_HOST=rabbitmq
@@ -527,10 +380,9 @@ services:
 
   reply-rmq:
     build:
-      context: .
+      context: ../../
       dockerfile: Dockerfile/Dockerfile.reply.rmq
     container_name: shop-reply-rmq
-    profiles: ["experimental"]
     restart: unless-stopped
     environment:
       - RABBITMQ_HOST=rabbitmq
@@ -548,7 +400,7 @@ services:
 
   # ==================== 可观测性 ====================
   jaeger:
-    image: jaegertracing/all-in-one:1.76.0
+    image: jaegertracing/all-in-one:1.51
     container_name: shop-jaeger
     restart: unless-stopped
     ports:
@@ -561,7 +413,7 @@ services:
       - shop-network
 
   prometheus:
-    image: prom/prometheus:v3
+    image: prom/prometheus:v2.47.0
     container_name: shop-prometheus
     restart: unless-stopped
     ports:
@@ -573,7 +425,7 @@ services:
       - shop-network
 
   grafana:
-    image: grafana/grafana:12.3.5
+    image: grafana/grafana:10.1.0
     container_name: shop-grafana
     restart: unless-stopped
     ports:
@@ -594,7 +446,5 @@ volumes:
   redis_data:
   etcd_data:
   rabbitmq_data:
-  elasticsearch_data:
   prometheus_data:
   grafana_data:
-      

@@ -2,39 +2,34 @@ Name: api-api
 Host: 0.0.0.0
 Port: 8888
 JwtAuth:
-  AccessSecret: "sadWmfsfm234jsfk2n"
-  AccessExpire: 604800
+  AccessSecret: "your-secret-key-here-please-change-in-production"
+  AccessExpire: 604800  # 7 days
 OrderRPC:
   Endpoints:
-    - order-rpc:8082
+    - 127.0.0.1:8082
 ProductRPC:
   Endpoints:
-    - product-rpc:8081
-ReplyRPC:
-  Endpoints:
-    - reply-rpc:8086
+    - 127.0.0.1:8081
+
 UserRPC:
   Endpoints:
-    - user-rpc:8080
+    - 127.0.0.1:8080
+
 SearchRPC:
   Endpoints:
-    - search-rpc:8083
+    - 127.0.0.1:8083
+
 CartRPC:
   Endpoints:
-    - cart-rpc:8084
-PayRPC:
-  Endpoints:
-    - pay-rpc:8085
+    - 127.0.0.1:8084
 
 BizRedis:
-  Host: redis:6379
+  Host: 127.0.0.1:6379
   Pass: ""
   Type: node
 
-DtmServer: "dtm:36790"
+DTMServer: "127.0.0.1:36790" # DTM服务的gRPC地址
 
-Telemetry:
-  Name: api-gateway
-  Endpoint: http://jaeger:14268/api/traces
-  Sampler: 1.0
-  Batcher: jaeger
+# DTM Saga 回调地址（DTM server 主动调用各 RPC 服务时使用，需与服务 ListenOn 一致）
+OrderServiceAddr: "127.0.0.1:8082"
+ProductServiceAddr: "127.0.0.1:8081"

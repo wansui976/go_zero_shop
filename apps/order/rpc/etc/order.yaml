@@ -3,59 +3,71 @@ ListenOn: 0.0.0.0:8082
 
 Etcd:
   Hosts:
-  - etcd:2379
+  - 127.0.0.1:2379
   Key: order.rpc
-  Mode: dev
+  Mode: dev                # 环境（dev=开发，prod=生产）
+
 
 UserRpc:
   Etcd:
     Hosts:
-      - etcd:2379
+      - 127.0.0.1:2379
     Key: user.rpc
 
 ProductRpc:
   Etcd:
     Hosts:
-      - etcd:2379
+      - 127.0.0.1:2379
     Key: product.rpc
+    
+  
 
-PayRpc:
-  Etcd:
-    Hosts:
-      - etcd:2379
-    Key: pay.rpc
+DataSource: root:@tcp(127.0.0.1:3306)/orders?charset=utf8mb4&parseTime=true&loc=Local
+# 说明：
 
-DataSource: root:123456@tcp(mysql:3306)/orders?charset=utf8mb4&parseTime=true&loc=Local
+# 说明：
+# root: 数据库用户名（开发环境通常为 root）
+# 123456: 数据库密码（替换为你的 MySQL 密码）
+# 127.0.0.1:3306: 数据库地址+端口（本地 MySQL 默认端口 3306）
+# lebron_order: 订单服务对应的数据库名（需提前创建，避免报错）
+# charset=utf8mb4: 字符集（支持 emoji）
+# parseTime=true: 必须配置，go-zero 需解析 MySQL 时间类型
 
 CacheRedis:
-  - Host: redis:6379
-    Pass: ""
+  - Host: 127.0.0.1:6379
+    Pass:
     Type: node
 BizRedis:
-  Host: redis:6379
-  Pass: ""
+  Host: 127.0.0.1:6379
+  Pass:
   Type: node
-
+   # 雪花算法配置：NodeID 范围 0-1023，分布式环境下每个实例需不同
 Snowflake:
-  NodeID: 1
+  NodeID: 1  # 开发环境可固定为1，生产环境需动态分配（如通过K8s Pod序号、配置中心）
 
+# DTM子事务屏障配置
 BarrierDB:
-  DataSource: root:123456@tcp(mysql:3306)/dtm_barrier?charset=utf8mb4&parseTime=true&loc=Local
-
+  DataSource: root:@tcp(127.0.0.1:3306)/dtm_barrier?charset=utf8mb4&parseTime=true&loc=Local
+  
 KafkaConsumer:
   Name: order-consumer
   Brokers:
-    - "kafka:9092"
+    - "127.0.0.1:9092"
   Group: "order-group"
   Topic: "order-created"
   Offset: last
   Consumers: 8
   Processors: 8
+  
+  # KafkaPusher:
+  # Brokers:
+  #   - 127.0.0.1:9092
+  # Topic: order_event_topic
 
-RabbitMQurl: "amqp://admin:admin123456@rabbitmq:5672/"
+RabbitMQurl: "amqp://guest:guest@localhost:5672/"
 
 Telemetry:
   Name: order-rpc
   Endpoint: http://jaeger:14268/api/traces
-  Sampler: 1.0
+  Sampler: 1.0  # 采样率，1.0表示100%采样
   Batcher: jaeger

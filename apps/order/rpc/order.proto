@@ -17,11 +17,11 @@ service OrderService {
   // 普通下单（可选择是否走 DTM）
   rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
 
+  // 订单预检（库存检查等）
+  rpc CreateOrderCheck(CreateOrderRequest) returns (CreateOrderResponse);
+
   // 订单回滚（普通下单失败兜底）
   rpc RollbackOrder(CreateOrderRequest) returns (CreateOrderResponse);
-
-  // 正式取消订单（用于超时未支付等场景）
-  rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
 
   // -----------------------
   // DTM 分布式事务接口
@@ -126,17 +126,6 @@ message CreateOrderResponse {
   string order_id = 1;
   bool success    = 2;
   string message  = 3;
-}
-
-message CancelOrderRequest {
-  int64 id = 1;
-  string operator = 2;
-  string reason = 3;
-}
-
-message CancelOrderResponse {
-  bool success = 1;
-  string message = 2;
 }
 
 // =======================================

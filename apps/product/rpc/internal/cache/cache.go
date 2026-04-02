@@ -26,7 +26,8 @@ func SetHashWithRandomExpire(ctx context.Context, r *redis.Redis, key string, fi
 		j = rand.Intn(jitterSeconds)
 	}
 	totalSeconds := int(baseExpire.Seconds()) + j
-	return r.ExpireCtx(ctx, key, totalSeconds)
+	_, err := r.ExpireCtx(ctx, key, totalSeconds)
+	return err
 }
 
 // DeleteWithDelay 延迟双删 - 防止并发下的缓存一致性问题

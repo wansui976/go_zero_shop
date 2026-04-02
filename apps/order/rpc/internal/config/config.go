@@ -19,7 +19,6 @@ type Config struct {
 	CacheRedis  cache.CacheConf
 	ProductRpc  zrpc.RpcClientConf
 	UserRpc     zrpc.RpcClientConf
-	PayRpc      zrpc.RpcClientConf
 	RabbitMQurl string
 	Snowflake   struct {
 		NodeID int64 `json:"NodeID"` // 雪花节点ID（0-1023）

@@ -1,3 +1,4 @@
+# Seckill RPC 配置
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -14,7 +15,7 @@ data:
       Key: seckill.rpc
     BizRedis:
       Host: redis:6379
-      Pass: ""
+      Pass:
       Type: node
     ProductRPC:
       Etcd:
@@ -25,14 +26,3 @@ data:
       Addrs:
         - kafka:9092
       SeckillTopic: seckill-topic
-
-    Telemetry:
-      Name: seckill-rpc
-      Endpoint: http://jaeger:14268/api/traces
-      Sampler: 1.0
-      Batcher: jaeger
-
-    Prometheus:
-      Host: 0.0.0.0
-      Port: 9101
-      Path: /metrics

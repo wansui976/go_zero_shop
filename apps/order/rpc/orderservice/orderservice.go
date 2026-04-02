@@ -7,7 +7,7 @@ package orderservice
 import (
 	"context"
 
-	"github.com/wansui976/go_zero_shop/apps/order/rpc/order"
+	"github.com/wansui976/go_zero_shop/apps/order/rpc/apps/order/rpc"
 
 	"github.com/zeromicro/go-zero/zrpc"
 	"google.golang.org/grpc"
@@ -16,8 +16,6 @@ import (
 type (
 	AddOrderRequest               = order.AddOrderRequest
 	AddOrderResponse              = order.AddOrderResponse
-	CancelOrderRequest            = order.CancelOrderRequest
-	CancelOrderResponse           = order.CancelOrderResponse
 	CreateOrderDTMConfirmRequest  = order.CreateOrderDTMConfirmRequest
 	CreateOrderDTMConfirmResponse = order.CreateOrderDTMConfirmResponse
 	CreateOrderDTMRevertRequest   = order.CreateOrderDTMRevertRequest
@@ -40,10 +38,10 @@ type (
 		GetOrderById(ctx context.Context, in *GetOrderByIdRequest, opts ...grpc.CallOption) (*GetOrderByIdResponse, error)
 		// 普通下单（可选择是否走 DTM）
 		CreateOrder(ctx context.Context, in *CreateOrderRequest, opts ...grpc.CallOption) (*CreateOrderResponse, error)
+		// 订单预检（库存检查等）
+		CreateOrderCheck(ctx context.Context, in *CreateOrderRequest, opts ...grpc.CallOption) (*CreateOrderResponse, error)
 		// 订单回滚（普通下单失败兜底）
 		RollbackOrder(ctx context.Context, in *CreateOrderRequest, opts ...grpc.CallOption) (*CreateOrderResponse, error)
-		// 正式取消订单（用于超时未支付等场景）
-		CancelOrder(ctx context.Context, in *CancelOrderRequest, opts ...grpc.CallOption) (*CancelOrderResponse, error)
 		// Try：创建半成品订单
 		CreateOrderDTM(ctx context.Context, in *AddOrderRequest, opts ...grpc.CallOption) (*AddOrderResponse, error)
 		// Confirm：确认订单（扣库存 + 改状态）
@@ -81,16 +79,16 @@ func (m *defaultOrderService) CreateOrder(ctx context.Context, in *CreateOrderRe
 	return client.CreateOrder(ctx, in, opts...)
 }
 
+// 订单预检（库存检查等）
+func (m *defaultOrderService) CreateOrderCheck(ctx context.Context, in *CreateOrderRequest, opts ...grpc.CallOption) (*CreateOrderResponse, error) {
+	client := order.NewOrderServiceClient(m.cli.Conn())
+	return client.CreateOrderCheck(ctx, in, opts...)
+}
+
 // 订单回滚（普通下单失败兜底）
 func (m *defaultOrderService) RollbackOrder(ctx context.Context, in *CreateOrderRequest, opts ...grpc.CallOption) (*CreateOrderResponse, error) {
 	client := order.NewOrderServiceClient(m.cli.Conn())
 	return client.RollbackOrder(ctx, in, opts...)
-}
-
-// 正式取消订单（用于超时未支付等场景）
-func (m *defaultOrderService) CancelOrder(ctx context.Context, in *CancelOrderRequest, opts ...grpc.CallOption) (*CancelOrderResponse, error) {
-	client := order.NewOrderServiceClient(m.cli.Conn())
-	return client.CancelOrder(ctx, in, opts...)
 }
 
 // Try：创建半成品订单

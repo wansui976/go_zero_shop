@@ -1,3 +1,5 @@
+# /tmp/go_zero_shop_extracted/go_zero_shop/deploy/kubernetes/base/rabbitmq.yaml
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -9,12 +11,16 @@ spec:
   resources:
     requests:
       storage: 5Gi
+  storageClassName: standard
+
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: rabbitmq
   namespace: go-zero-shop
+  labels:
+    app: rabbitmq
 spec:
   replicas: 1
   selector:
@@ -26,54 +32,63 @@ spec:
         app: rabbitmq
     spec:
       containers:
-      - name: rabbitmq
-        image: rabbitmq:4.2.4-management-alpine
-        imagePullPolicy: IfNotPresent
-        ports:
-        - containerPort: 5672
-          name: amqp
-        - containerPort: 15672
-          name: management
-        env:
-        - name: RABBITMQ_DEFAULT_USER
-          value: admin
-        - name: RABBITMQ_DEFAULT_PASS
-          value: admin123456
-        volumeMounts:
-        - name: rabbitmq-data
-          mountPath: /var/lib/rabbitmq
-        readinessProbe:
-          exec:
-            command: ["rabbitmq-diagnostics", "-q", "ping"]
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 6
-        livenessProbe:
-          exec:
-            command: ["rabbitmq-diagnostics", "-q", "ping"]
-          initialDelaySeconds: 90
-          periodSeconds: 20
-          timeoutSeconds: 5
-          failureThreshold: 6
+        - name: rabbitmq
+          image: rabbitmq:3.12-management-alpine
+          ports:
+            - containerPort: 5672
+              name: amqp
+            - containerPort: 15672
+              name: management
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: shop-secrets
+                  key: RABBITMQ_USER
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: shop-secrets
+                  key: RABBITMQ_PASSWORD
+          volumeMounts:
+            - name: rabbitmq-data
+              mountPath: /var/lib/rabbitmq
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          readinessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
+            initialDelaySeconds: 60
+            periodSeconds: 20
       volumes:
-      - name: rabbitmq-data
-        persistentVolumeClaim:
-          claimName: rabbitmq-pvc
+        - name: rabbitmq-data
+          persistentVolumeClaim:
+            claimName: rabbitmq-pvc
+
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: rabbitmq
+  name: rabbitmq-service
   namespace: go-zero-shop
 spec:
+  type: ClusterIP
+  ports:
+    - port: 5672
+      targetPort: 5672
+      name: amqp
+    - port: 15672
+      targetPort: 15672
+      name: management
   selector:
     app: rabbitmq
-  ports:
-  - port: 5672
-    targetPort: 5672
-    name: amqp
-  - port: 15672
-    targetPort: 15672
-    name: management
-  type: ClusterIP

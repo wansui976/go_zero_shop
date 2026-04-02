@@ -93,20 +93,22 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		svc.Bloom = bloom.New(1000000, 0.01)
 		for _, p := range products {
 			stockKey := fmt.Sprintf("product:stock:%d", p.Id)
-			// 与 Lua 扣库存脚本保持同一字段协议：total/used/frozen/sync_used/is_invalid
-			if val, err := svc.BizRedis.HgetCtx(ctx, stockKey, "used"); err == nil && val != "" {
-				if svc.Bloom != nil {
-					svc.Bloom.AddInt64(p.Id)
-				}
+			// 检查是否已存在 available 字段
+			if val, err := svc.BizRedis.HgetCtx(ctx, stockKey, "available"); err == nil && val != "" {
 				continue
 			}
+			_ = svc.BizRedis.HmsetCtx(ctx, stockKey, map[string]string{
+				"total":      fmt.Sprintf("%d", p.Stock),
+				"available":  fmt.Sprintf("%d", p.Stock),
+				"pre_locked": "0",
+				"sold":       fmt.Sprintf("%d", p.Sales),
+			})
 			// 使用随机过期时间，避免缓存雪崩：基础7天，抖动0-1天
 			_ = cache.SetHashWithRandomExpire(ctx, svc.BizRedis, stockKey, map[string]string{
 				"total":      fmt.Sprintf("%d", p.Stock),
-				"used":       "0",
-				"frozen":     "0",
-				"sync_used":  "0",
-				"is_invalid": "0",
+				"available":  fmt.Sprintf("%d", p.Stock),
+				"pre_locked": "0",
+				"sold":       fmt.Sprintf("%d", p.Sales),
 			}, 7*24*time.Hour, 24*3600)
 			// add to bloom
 			if svc.Bloom != nil {

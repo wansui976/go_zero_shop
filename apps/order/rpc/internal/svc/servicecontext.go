@@ -6,11 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/redis/go-redis/v9"
 	"github.com/wansui976/go_zero_shop/apps/order/rpc/internal/config"
 	"github.com/wansui976/go_zero_shop/apps/order/rpc/model"
-	"github.com/wansui976/go_zero_shop/apps/pay/rpc/payclient"
 	"github.com/wansui976/go_zero_shop/apps/product/rpc/product"
 	"github.com/wansui976/go_zero_shop/apps/product/rpc/productclient"
 	"github.com/wansui976/go_zero_shop/apps/user/rpc/userclient"
@@ -30,7 +28,6 @@ type ServiceContext struct {
 	ShippingModel  model.OrderAddressSnapshotModel
 	UserRpc        userclient.User
 	ProductRpc     product.ProductClient
-	PayRpc         payclient.Pay
 	//ProductModel
 	//KafkaPusher    *kq.Pusher
 	RabbitMQ *mq.RabbitMQ
@@ -58,40 +55,18 @@ func NewServiceContext(c config.Config) *ServiceContext {
 	if err != nil {
 		panic(fmt.Errorf("初始化 MQ 客户端失败: %v", err))
 	}
-	for _, queueName := range []string{"order_create_queue", "order.notification.queue"} {
-		err = rabbitMQ.DeclareQueue(queueName,
-			true,
-			false,
-			false,
-			false,
-			nil,
-		)
-		if err != nil {
-			panic(fmt.Errorf("声明队列失败(%s): %v", queueName, err))
-		}
-	}
-
-	// 预先声明延迟处理基础设施，保证下单主链能够直接挂上延迟取消/提醒。
-	ch, err := rabbitMQ.GetChannel()
+	//声明订单实践队列
+	orderEventQueue := "order_create_queue"
+	err = rabbitMQ.DeclareQueue(orderEventQueue,
+		true,  // 队列持久化
+		false, // 不自动删除
+		false, // 非排他性
+		false, // 等待响应
+		nil,
+	)
 	if err != nil {
-		panic(fmt.Errorf("获取MQ信道失败: %v", err))
-	}
-	defer rabbitMQ.ReturnChannel(ch)
-	if err := ch.ExchangeDeclare("dlx.exchange", "direct", true, false, false, false, nil); err != nil {
-		panic(fmt.Errorf("声明死信交换机失败: %v", err))
-	}
-	if _, err := ch.QueueDeclare("order.delay.queue", true, false, false, false, amqp.Table{
-		"x-dead-letter-exchange":    "dlx.exchange",
-		"x-dead-letter-routing-key": "order.dlq",
-		"x-message-ttl":             30 * 60 * 1000,
-	}); err != nil {
-		panic(fmt.Errorf("声明延迟队列失败: %v", err))
-	}
-	if _, err := ch.QueueDeclare("order.dlq.queue", true, false, false, false, nil); err != nil {
-		panic(fmt.Errorf("声明订单死信队列失败: %v", err))
-	}
-	if err := ch.QueueBind("order.dlq.queue", "order.dlq", "dlx.exchange", false, nil); err != nil {
-		panic(fmt.Errorf("绑定订单死信队列失败: %v", err))
+		panic(fmt.Errorf("声明订单队列失败: %v", err))
+
 	}
 	conn := sqlx.NewMysql(c.DataSource)
 
@@ -114,7 +89,6 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		ShippingModel:  model.NewOrderAddressSnapshotModel(conn, c.CacheRedis),
 		UserRpc:        userclient.NewUser(zrpc.MustNewClient(c.UserRpc)),
 		ProductRpc:     productclient.NewProduct(zrpc.MustNewClient(c.ProductRpc)),
-		PayRpc:         payclient.NewPay(zrpc.MustNewClient(c.PayRpc)),
 		//KafkaPusher:    kafkaPusher,
 		RabbitMQ: rabbitMQ,
 		Rdb:      rdb,

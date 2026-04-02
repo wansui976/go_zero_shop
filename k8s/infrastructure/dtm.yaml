@@ -1,3 +1,4 @@
+# DTM 部署配置
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -13,70 +14,54 @@ spec:
       labels:
         app: dtm
     spec:
-      initContainers:
-      - name: wait-for-mysql
-        image: mysql:8.4.8
-        command: ['sh', '-c', 'until mysqladmin ping -hmysql -uroot -p123456 --silent; do echo waiting for mysql; sleep 2; done']
-      - name: init-dtm-schema
-        image: mysql:8.4.8
-        command:
-        - sh
-        - -c
-        - |
-          for f in /sql/*.sql; do
-            echo "importing $f";
-            mysql -hmysql -uroot -p123456 < "$f";
-          done
-        volumeMounts:
-        - name: dtm-init-sql
-          mountPath: /sql
       containers:
       - name: dtm
-        image: yedf/dtm:latest
-        imagePullPolicy: IfNotPresent
-        env:
-        - name: STORE_DRIVER
-          value: mysql
-        - name: STORE_HOST
-          value: mysql
-        - name: STORE_PORT
-          value: "3306"
-        - name: STORE_USER
-          value: root
-        - name: STORE_PASSWORD
-          value: "123456"
-        - name: STORE_DB
-          value: dtm
-        - name: MICRO_SERVICE_DRIVER
-          value: dtm-driver-gozero
-        - name: MICRO_SERVICE_TARGET
-          value: etcd://etcd:2379/dtmservice
-        - name: MICRO_SERVICE_END_POINT
-          value: dtm:36790
-        - name: IS_DOCKER
-          value: "1"
+        image: dtm-labs/dtm:latest
         ports:
         - containerPort: 36789
-          name: http
         - containerPort: 36790
-          name: grpc
-        startupProbe:
-          tcpSocket:
-            port: 36790
-          periodSeconds: 5
-          failureThreshold: 30
-        readinessProbe:
-          tcpSocket:
-            port: 36790
-          periodSeconds: 5
+        env:
+        - name: DTM_DB_DRIVER
+          value: "mysql"
+        - name: DTM_DB_DSN
+          value: "root:123456@tcp(mysql:3306)/dtm?charset=utf8mb4&parseTime=true&loc=Local"
+        - name: DTM_BARRIER_DB_DRIVER
+          value: "mysql"
+        - name: DTM_BARRIER_DB_DSN
+          value: "root:123456@tcp(mysql:3306)/dtm_barrier?charset=utf8mb4&parseTime=true&loc=Local"
+        volumeMounts:
+        - name: config
+          mountPath: /app/conf
+          readOnly: true
         livenessProbe:
           tcpSocket:
             port: 36789
+          initialDelaySeconds: 30
           periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 36789
+          initialDelaySeconds: 5
+          periodSeconds: 5
       volumes:
-      - name: dtm-init-sql
+      - name: config
         configMap:
-          name: dtm-init-sql
+          name: dtm-config
+      initContainers:
+      - name: wait-for-mysql
+        image: busybox:1.28
+        command: ['sh', '-c', 'until nc -z mysql 3306; do echo waiting for mysql; sleep 2; done;']
+        - name: init-dtm-db
+          image: mysql:8.0
+          env:
+          - name: MYSQL_PWD
+            value: "123456"
+          command:
+          - sh
+          - -c
+          - |
+            mysql -h mysql -u root -e "CREATE DATABASE IF NOT EXISTS dtm;"
+            mysql -h mysql -u root -e "CREATE DATABASE IF NOT EXISTS dtm_barrier;"
 ---
 apiVersion: v1
 kind: Service
