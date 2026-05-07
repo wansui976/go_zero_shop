@@ -13,13 +13,17 @@ spec:
     metadata:
       labels:
         app: reply-rpc
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9091"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
       - name: reply-rpc
         image: go-zero-shop/reply-rpc:latest
         imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 8083
+        - containerPort: 9008
         env:
         - name: POD_IP
           valueFrom:

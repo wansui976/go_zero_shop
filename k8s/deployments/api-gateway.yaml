@@ -13,6 +13,10 @@ spec:
     metadata:
       labels:
         app: api-gateway
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8888"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
       - name: api-gateway
@@ -54,16 +58,16 @@ spec:
       initContainers:
       - name: wait-for-user-rpc
         image: busybox:1.28
-        command: ['sh', '-c', 'until nc -z user-rpc 8080; do echo waiting for user-rpc; sleep 2; done;']
+        command: ['sh', '-c', 'until nc -z user-rpc-service 9000; do echo waiting for user-rpc; sleep 2; done;']
       - name: wait-for-product-rpc
         image: busybox:1.28
-        command: ['sh', '-c', 'until nc -z product-rpc 8081; do echo waiting for product-rpc; sleep 2; done;']
+        command: ['sh', '-c', 'until nc -z product-rpc-service 9001; do echo waiting for product-rpc; sleep 2; done;']
       - name: wait-for-order-rpc
         image: busybox:1.28
-        command: ['sh', '-c', 'until nc -z order-rpc 8082; do echo waiting for order-rpc; sleep 2; done;']
+        command: ['sh', '-c', 'until nc -z order-rpc-service 9002; do echo waiting for order-rpc; sleep 2; done;']
       - name: wait-for-reply-rpc
         image: busybox:1.28
-        command: ['sh', '-c', 'until nc -z reply-rpc 8083; do echo waiting for reply-rpc; sleep 2; done;']
+        command: ['sh', '-c', 'until nc -z reply-rpc-service 9008; do echo waiting for reply-rpc; sleep 2; done;']
 ---
 apiVersion: v1
 kind: Service

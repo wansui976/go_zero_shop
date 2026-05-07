@@ -222,7 +222,8 @@ func (l *CreateOrderDTMLogic) CreateOrderDTM(in *order.AddOrderRequest) (*order.
 			Status:          1,
 			ReceiverName:    receiveAddressRes.Name,
 			ReceiverPhone:   receiveAddressRes.Phone,
-			ReceiverAddress: receiveAddressRes.Province + receiveAddressRes.Region + receiveAddressRes.City + receiveAddressRes.DetailAddress,
+			ReceiverAddress: fmt.Sprintf("%s%s%s %s",
+			receiveAddressRes.Province, receiveAddressRes.City, receiveAddressRes.Region, receiveAddressRes.DetailAddress),
 			Gid: sql.NullString{
 				String: in.Gid,
 				Valid:  in.Gid != "", // 若Gid非空则Valid为true，否则false（对应数据库NULL）

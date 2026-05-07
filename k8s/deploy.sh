@@ -21,7 +21,7 @@ echo "✅ Kubernetes 集群连接正常"
 
 # 1. 创建命名空间
 echo "📦 创建命名空间..."
-kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/base/namespace.yaml
 
 # 2. 创建配置文件
 echo "📝 创建配置文件..."

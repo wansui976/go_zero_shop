@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 
+	"github.com/wansui976/go_zero_shop/apps/product/rpc/product"
 	"github.com/wansui976/go_zero_shop/apps/seckill/rpc/internal/svc"
 	"github.com/wansui976/go_zero_shop/apps/seckill/rpc/seckill"
 
@@ -24,7 +25,22 @@ func NewSeckillProductsLogic(ctx context.Context, svcCtx *svc.ServiceContext) *S
 }
 
 func (l *SeckillProductsLogic) SeckillProducts(in *seckill.SeckillProductsRequest) (*seckill.SeckillProductsResponse, error) {
-	// todo: add your logic here and delete this line
+	resp, err := l.svcCtx.ProductRPC.ProductAllList(l.ctx, &product.ProductAllListRequest{})
+	if err != nil {
+		return nil, err
+	}
 
-	return &seckill.SeckillProductsResponse{}, nil
+	products := make([]*seckill.Product, 0, len(resp.Products))
+	for _, p := range resp.Products {
+		products = append(products, &seckill.Product{
+			ProductId:  p.Id,
+			Name:       p.Name,
+			Desc:       p.Brief,
+			Image:      p.ImageUrl,
+			Stock:      p.Stock,
+			CreateTime: p.CreateTime,
+		})
+	}
+
+	return &seckill.SeckillProductsResponse{Products: products}, nil
 }

@@ -279,25 +279,22 @@ func handleStockChange(ctx context.Context, rdb *redis.Redis, msg amqp.Delivery)
 	return err
 }
 
-// checkDuplicate 幂等性检查（Redis GET/SET 实现）
-// key 格式: "stock_event:{eventID}"
-// TTL: 24小时
+// checkDuplicate 幂等性检查，使用原子 SETNX 避免 TOCTOU 竞态条件。
+// key 格式: "stock_event:{eventID}"，TTL: 24小时。
 func checkDuplicate(ctx context.Context, rdb *redis.Redis, eventID string) (bool, error) {
 	if eventID == "" {
 		return false, nil
 	}
-
 	key := fmt.Sprintf("stock_event:%s", eventID)
-	// 使用 GET 检查是否已存在
-	val, _ := rdb.Get(key)
-	if val == "1" {
-		logx.Debugf("检测到重复事件: EventID=%s", eventID)
-		return true, nil // 已存在，重复事件
+	ok, err := rdb.SetnxEx(key, "1", 86400)
+	if err != nil {
+		return false, fmt.Errorf("setnx event failed: %w", err)
 	}
-
-	// 设置新值（带过期时间）
-	rdb.Setex(key, "1", 86400)
-	return false, nil // 新事件
+	if !ok {
+		logx.Debugf("检测到重复事件: EventID=%s", eventID)
+		return true, nil
+	}
+	return false, nil
 }
 
 func handleOrderStockDecrease(ctx context.Context, event *StockChangeEvent) error {

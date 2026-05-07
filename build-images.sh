@@ -11,22 +11,22 @@ TAG="latest"
 
 # 构建所有服务镜像
 echo "🔨 构建 User RPC 镜像..."
-docker build -f Dockerfile.user -t ${REGISTRY}/user-rpc:${TAG} .
+docker build -f Dockerfile/Dockerfile.user -t ${REGISTRY}/user-rpc:${TAG} .
 
 echo "🔨 构建 Product RPC 镜像..."
-docker build -f Dockerfile.product -t ${REGISTRY}/product-rpc:${TAG} .
+docker build -f Dockerfile/Dockerfile.product -t ${REGISTRY}/product-rpc:${TAG} .
 
 echo "🔨 构建 Order RPC 镜像..."
-docker build -f Dockerfile.order -t ${REGISTRY}/order-rpc:${TAG} .
+docker build -f Dockerfile/Dockerfile.order -t ${REGISTRY}/order-rpc:${TAG} .
 
 echo "🔨 构建 Reply RPC 镜像..."
-docker build -f Dockerfile.reply -t ${REGISTRY}/reply-rpc:${TAG} .
+docker build -f Dockerfile/Dockerfile.reply -t ${REGISTRY}/reply-rpc:${TAG} .
 
 echo "🔨 构建 Seckill RPC 镜像..."
-docker build -f Dockerfile.seckill -t ${REGISTRY}/seckill-rpc:${TAG} .
+docker build -f Dockerfile/Dockerfile.seckill -t ${REGISTRY}/seckill-rpc:${TAG} .
 
 echo "🔨 构建 API Gateway 镜像..."
-docker build -f Dockerfile.api -t ${REGISTRY}/api-gateway:${TAG} .
+docker build -f Dockerfile/Dockerfile.api -t ${REGISTRY}/api-gateway:${TAG} .
 
 echo "📋 构建完成的镜像列表："
 docker images | grep ${REGISTRY}

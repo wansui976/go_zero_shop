@@ -2,6 +2,10 @@ package logic
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"time"
 
 	"github.com/zeromicro/go-zero/core/logx"
@@ -33,13 +37,14 @@ func (l *PaymentCallbackLogic) PaymentCallback(in *pay.PaymentCallbackRequest) (
 		}, nil
 	}
 
-	// 2. 验签（实际需要验证第三方签名）
-	// if !verifySign(in) {
-	//     return &pay.PaymentCallbackResponse{
-	//         Success: false,
-	//         Message: "sign verify failed",
-	//     }, nil
-	// }
+	// 2. 验签
+	if !l.verifySign(in) {
+		logx.Errorf("PaymentCallback: sign verify failed, paymentId: %s", in.PaymentId)
+		return &pay.PaymentCallbackResponse{
+			Success: false,
+			Message: "sign verify failed",
+		}, nil
+	}
 
 	// 3. 更新支付状态
 	payment.Status = int(in.Status)
@@ -62,4 +67,20 @@ func (l *PaymentCallbackLogic) PaymentCallback(in *pay.PaymentCallbackRequest) (
 		Success: true,
 		Message: "success",
 	}, nil
+}
+
+// verifySign verifies the HMAC-SHA256 callback signature.
+func (l *PaymentCallbackLogic) verifySign(in *pay.PaymentCallbackRequest) bool {
+	secret := l.svcCtx.Config.PayWebhookSecret
+	if secret == "" {
+		return true // dev mode: skip verification when secret is not configured
+	}
+	if in.Sign == "" {
+		return false
+	}
+	payload := fmt.Sprintf("%s_%s_%d_%d", in.PaymentId, in.OrderId, in.TotalAmount, int32(in.Status))
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(payload))
+	expected := hex.EncodeToString(mac.Sum(nil))
+	return hmac.Equal([]byte(in.Sign), []byte(expected))
 }

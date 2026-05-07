@@ -4,7 +4,6 @@ FROM golang:1.21-alpine AS builder
 
 ARG CGO_ENABLED=0
 ARG GOOS=linux
-ARG GOARCH=arm64
 
 RUN apk add --no-cache git ca-certificates tzdata
 ENV GOPROXY=https://goproxy.cn,direct
@@ -33,6 +32,6 @@ COPY --from=builder /build/apps/pay/rpc/etc/pay.yaml ./etc/
 RUN chown -R appuser:appgroup /app
 USER appuser
 
-EXPOSE 8085
+EXPOSE 9005
 
 CMD ["./pay-rpc", "-f", "./etc/pay.yaml"]

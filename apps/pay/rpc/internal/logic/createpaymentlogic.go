@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/bwmarrin/snowflake"
 	"github.com/zeromicro/go-zero/core/logx"
 	"github.com/wansui976/go_zero_shop/apps/pay/rpc/internal/svc"
 	"github.com/wansui976/go_zero_shop/apps/pay/rpc/pay"
@@ -25,7 +24,7 @@ func NewCreatePaymentLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Cre
 
 func (l *CreatePaymentLogic) CreatePayment(in *pay.CreatePaymentRequest) (*pay.CreatePaymentResponse, error) {
 	// 1. 生成支付单号
-	paymentId := generatePaymentId(l.svcCtx.Config.Snowflake.NodeID)
+	paymentId := generatePaymentId(l.svcCtx)
 	
 	_, err := l.svcCtx.PaymentModel.Insert(l.ctx, &model.Payment{
 		PaymentId:     paymentId,
@@ -56,13 +55,12 @@ func (l *CreatePaymentLogic) CreatePayment(in *pay.CreatePaymentRequest) (*pay.C
 	}, nil
 }
 
-// 生成支付单号
-func generatePaymentId(nodeID int64) string {
-	node, err := snowflake.NewNode(nodeID)
-	if err != nil {
+// 生成支付单号（复用 ServiceContext 的 Snowflake 节点避免 ID 冲突）
+func generatePaymentId(svcCtx *svc.ServiceContext) string {
+	if svcCtx.SnowflakeNode == nil {
 		return ""
 	}
-	return node.Generate().String()
+	return svcCtx.SnowflakeNode.Generate().String()
 }
 
 // 生成支付链接（模拟）

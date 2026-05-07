@@ -8,7 +8,7 @@ import (
 	"github.com/wansui976/go_zero_shop/apps/user/rpc/internal/svc"
 	"github.com/wansui976/go_zero_shop/apps/user/rpc/model"
 	"github.com/wansui976/go_zero_shop/apps/user/rpc/user"
-	//"github.com/wansui976/go_zero_shop/pkg/tool"
+	"github.com/wansui976/go_zero_shop/pkg/tool"
 	"github.com/wansui976/go_zero_shop/pkg/xerr"
 	"github.com/zeromicro/go-zero/core/logx"
 )
@@ -36,12 +36,7 @@ func (l *LoginLogic) Login(in *user.LoginRequest) (*user.LoginResponse, error) {
 		}
 		return nil, err
 	}
-	// md5ByString, err := tool.Md5ByString(in.Password)
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	if !(in.Password == userDB.Password) {
+	if !tool.CheckPassword(in.Password, userDB.Password) {
 		return nil, errors.Wrap(xerr.NewErrMsg("账号密码错误"), "密码错误")
 	}
 	var resp user.LoginResponse

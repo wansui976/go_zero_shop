@@ -14,8 +14,9 @@ type Config struct {
 	Snowflake   struct {
 		NodeID int64 `json:"NodeID"`
 	} `json:"Snowflake"`
-	BizRedis    redis.RedisConf
-	
+	BizRedis         redis.RedisConf
+	PayWebhookSecret string `json:"PayWebhookSecret"`
+
 	// 支付配置
 	WechatPay struct {
 		AppID       string `json:"appId"`
@@ -24,7 +25,7 @@ type Config struct {
 		NotifyURL   string `json:"notifyURL"`
 		TradeType   string `json:"tradeType"` // JSAPI, NATIVE, APP
 	} `json:"WechatPay"`
-	
+
 	Alipay struct {
 		AppID       string `json:"appId"`
 		PrivateKey  string `json:"privateKey"`

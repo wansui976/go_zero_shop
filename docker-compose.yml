@@ -80,10 +80,52 @@ services:
       timeout: 5s
       retries: 5
 
+  dtm:
+    image: yedf/dtm:latest
+    container_name: shop-dtm
+    restart: unless-stopped
+    ports:
+      - "36789:36789"
+      - "36790:36790"
+    environment:
+      IS_DOCKER: "true"
+      STORE_DRIVER: mysql
+      STORE_HOST: mysql
+      STORE_PORT: "3306"
+      STORE_USER: root
+      STORE_PASSWORD: root123456
+      STORE_DB: go_zero_shop
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - shop-network
+
+  elasticsearch:
+    image: elasticsearch:8.15.0
+    container_name: shop-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks:
+      - shop-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q 'green\\|yellow'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   # ==================== RPC 服务 ====================
   user-rpc:
     build:
-      context: ../../
+      context: .
       dockerfile: Dockerfile/Dockerfile.user
     container_name: shop-user-rpc
     restart: unless-stopped
@@ -105,7 +147,7 @@ services:
 
   product-rpc:
     build:
-      context: ../../
+      context: .
       dockerfile: Dockerfile/Dockerfile.product
     container_name: shop-product-rpc
     restart: unless-stopped
@@ -127,7 +169,7 @@ services:
 
   order-rpc:
     build:
-      context: ../../
+      context: .
       dockerfile: Dockerfile/Dockerfile.order
     container_name: shop-order-rpc
     restart: unless-stopped
@@ -153,7 +195,7 @@ services:
 
   seckill-rpc:
     build:
-      context: ../../
+      context: .
       dockerfile: Dockerfile/Dockerfile.seckill
     container_name: shop-seckill-rpc
     restart: unless-stopped
@@ -178,7 +220,7 @@ services:
 
   cart-rpc:
     build:
-      context: ../../
+      context: .
       dockerfile: Dockerfile/Dockerfile.cart
     container_name: shop-cart-rpc
     restart: unless-stopped
@@ -200,7 +242,7 @@ services:
 
   pay-rpc:
     build:
-      context: ../../
+      context: .
       dockerfile: Dockerfile/Dockerfile.pay
     container_name: shop-pay-rpc
     restart: unless-stopped
@@ -225,7 +267,7 @@ services:
 
   search-rpc:
     build:
-      context: ../../
+      context: .
       dockerfile: Dockerfile/Dockerfile.search
     container_name: shop-search-rpc
     restart: unless-stopped
@@ -247,7 +289,7 @@ services:
 
   recommend-rpc:
     build:
-      context: ../../
+      context: .
       dockerfile: Dockerfile/Dockerfile.recommend
     container_name: shop-recommend-rpc
     restart: unless-stopped
@@ -269,7 +311,7 @@ services:
 
   reply-rpc:
     build:
-      context: ../../
+      context: .
       dockerfile: Dockerfile/Dockerfile.reply
     container_name: shop-reply-rpc
     restart: unless-stopped
@@ -292,7 +334,7 @@ services:
   # ==================== API Gateway ====================
   api-gateway:
     build:
-      context: ../../
+      context: .
       dockerfile: Dockerfile/Dockerfile.api
     container_name: shop-api-gateway
     restart: unless-stopped
@@ -320,7 +362,7 @@ services:
   # ==================== 消息队列消费者 ====================
   seckill-rmq:
     build:
-      context: ../../
+      context: .
       dockerfile: Dockerfile/Dockerfile.seckill.rmq
     container_name: shop-seckill-rmq
     restart: unless-stopped
@@ -340,7 +382,7 @@ services:
 
   order-rmq:
     build:
-      context: ../../
+      context: .
       dockerfile: Dockerfile/Dockerfile.order.rmq
     container_name: shop-order-rmq
     restart: unless-stopped
@@ -360,7 +402,7 @@ services:
 
   pay-rmq:
     build:
-      context: ../../
+      context: .
       dockerfile: Dockerfile/Dockerfile.pay.rmq
     container_name: shop-pay-rmq
     restart: unless-stopped
@@ -380,7 +422,7 @@ services:
 
   reply-rmq:
     build:
-      context: ../../
+      context: .
       dockerfile: Dockerfile/Dockerfile.reply.rmq
     container_name: shop-reply-rmq
     restart: unless-stopped
@@ -399,6 +441,20 @@ services:
       - shop-network
 
   # ==================== 可观测性 ====================
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: shop-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./prometheus/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    networks:
+      - shop-network
+
   jaeger:
     image: jaegertracing/all-in-one:1.51
     container_name: shop-jaeger
@@ -420,6 +476,7 @@ services:
       - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
     networks:
       - shop-network
@@ -434,6 +491,9 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin123456
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     networks:
       - shop-network
 
@@ -448,3 +508,4 @@ volumes:
   rabbitmq_data:
   prometheus_data:
   grafana_data:
+  es_data:

@@ -52,7 +52,7 @@ func (l *DecrStockLogic) DecrStock(in *product.DecrStockRequest) (*product.DecrS
 
 			result, err := l.svcCtx.ProductModel.TxUpdateStock(tx, it.Id, -it.Num)
 			if err != nil {
-				fmt.Errorf("库存扣减SQL执行失败, productId: %d, err: %v", it.Id, err)
+				l.Errorf("库存扣减SQL执行失败, productId: %d, err: %v", it.Id, err)
 				return err
 			}
 			//检查受影响的行数，判断库存是否充足

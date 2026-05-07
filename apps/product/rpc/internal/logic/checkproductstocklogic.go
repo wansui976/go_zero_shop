@@ -7,7 +7,7 @@ import (
 	"github.com/dtm-labs/dtmcli"
 	"github.com/wansui976/go_zero_shop/apps/product/rpc/internal/svc"
 	"github.com/wansui976/go_zero_shop/apps/product/rpc/product"
-	"github.com/wansui976/go_zero_shop/apps/user/rpc/model"
+	"github.com/wansui976/go_zero_shop/apps/product/rpc/internal/model"
 	"github.com/zeromicro/go-zero/core/logx"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

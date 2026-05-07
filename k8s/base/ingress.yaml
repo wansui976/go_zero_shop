@@ -32,38 +32,14 @@ spec:
     - host: api.shop.local
       http:
         paths:
-          # 路由规则 1：访问 api.shop.local/user/* 转发到用户中心
-          - path: /user
+          # 所有 API 路由均转发到统一 API 网关
+          - path: /
             pathType: Prefix
             backend:
               service:
-                name: user-api-service
+                name: api-gateway
                 port:
                   number: 8888
-          # 路由规则 2：访问 api.shop.local/product/* 转发到商品中心
-          - path: /product
-            pathType: Prefix
-            backend:
-              service:
-                name: product-api-service
-                port:
-                  number: 8889
-          # 路由规则 3：访问 api.shop.local/order/* 转发到订单中心
-          - path: /order
-            pathType: Prefix
-            backend:
-              service:
-                name: order-api-service
-                port:
-                  number: 8890
-          # 路由规则 4：访问 api.shop.local/seckill/* 转发到秒杀业务
-          - path: /seckill
-            pathType: Prefix
-            backend:
-              service:
-                name: seckill-api-service
-                port:
-                  number: 8891
   # HTTPS 配置
   tls:
     - hosts:

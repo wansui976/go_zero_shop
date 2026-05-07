@@ -4,10 +4,8 @@ FROM golang:1.21-alpine AS builder
 # 设置构建参数
 # - CGO_ENABLED=0：禁用 CGO，生成静态链接二进制文件（无需依赖系统库，可在纯 Alpine 镜像中运行）
 # - GOOS=linux：指定目标操作系统为 Linux（容器环境）
-# - GOARCH=arm64：指定目标架构
 ARG CGO_ENABLED=0
 ARG GOOS=linux
-ARG GOARCH=arm64
 
 # 安装必要的构建工具
 RUN apk add --no-cache git ca-certificates tzdata
@@ -60,7 +58,7 @@ RUN chown -R appuser:appgroup /app
 USER appuser
 
 # 暴露服务端口
-EXPOSE 8080
+EXPOSE 9000
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
