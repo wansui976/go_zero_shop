@@ -21,11 +21,19 @@ spec:
       - name: search-rpc
         image: go-zero-shop/search-rpc:latest
         imagePullPolicy: IfNotPresent
-        command: ["/app/app-binary", "-f", "/app/etc/search.yaml"]
+        command: ["/app/search-rpc", "-f", "/app/etc/search.yaml"]
+        envFrom:
+        - secretRef:
+            name: shop-secrets
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         ports:
         - containerPort: 9101
           name: metrics
-        - containerPort: 8083
+        - containerPort: 8086
           name: grpc
         volumeMounts:
         - name: config
@@ -33,21 +41,21 @@ spec:
           readOnly: true
         startupProbe:
           grpc:
-            port: 8083
+            port: 8086
           initialDelaySeconds: 10
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 30
         readinessProbe:
           grpc:
-            port: 8083
+            port: 8086
           initialDelaySeconds: 5
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 6
         livenessProbe:
           grpc:
-            port: 8083
+            port: 8086
           initialDelaySeconds: 30
           periodSeconds: 20
           timeoutSeconds: 5
@@ -70,8 +78,8 @@ spec:
   selector:
     app: search-rpc
   ports:
-  - port: 8083
-    targetPort: 8083
+  - port: 8086
+    targetPort: 8086
     name: grpc
   - port: 9101
     targetPort: 9101

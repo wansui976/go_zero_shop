@@ -3,6 +3,7 @@ package svc
 import (
 	"github.com/wansui976/go_zero_shop/apps/product/rpc/product"
 	"github.com/wansui976/go_zero_shop/apps/seckill/rpc/internal/config"
+	"github.com/wansui976/go_zero_shop/pkg/envcfg"
 
 	"github.com/zeromicro/go-queue/kq"
 	"github.com/zeromicro/go-zero/core/stores/redis"
@@ -17,6 +18,10 @@ type ServiceContext struct {
 }
 
 func NewServiceContext(c config.Config) *ServiceContext {
+	if v := envcfg.Getenv("REDIS_PASSWORD", ""); v != "" {
+		c.BizRedis.Pass = v
+	}
+
 	return &ServiceContext{
 		Config:      c,
 		BizRedis:    redis.New(c.BizRedis.Host, redis.WithPass(c.BizRedis.Pass)),

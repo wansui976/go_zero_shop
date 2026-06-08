@@ -145,7 +145,7 @@ func (l *CreateOrderDTMLogic) CreateOrderDTM(in *order.AddOrderRequest) (*order.
 				return
 			}
 			for _, it := range preLockedItems {
-				_ = revertPreLockStockByGID(l.ctx, l.svcCtx.Rdb, it.ProductId, in.Gid)
+				_ = revertPreLockStockByGID(l.ctx, l.svcCtx.Rdb, it.ProductId, in.Gid, it.Quantity)
 			}
 		}
 
@@ -245,7 +245,7 @@ func (l *CreateOrderDTMLogic) CreateOrderDTM(in *order.AddOrderRequest) (*order.
 	if err != nil {
 		if l.svcCtx != nil && l.svcCtx.Rdb != nil {
 			for _, it := range in.Items {
-				_ = revertPreLockStockByGID(l.ctx, l.svcCtx.Rdb, it.ProductId, in.Gid)
+				_ = revertPreLockStockByGID(l.ctx, l.svcCtx.Rdb, it.ProductId, in.Gid, it.Quantity)
 			}
 		}
 		return nil, err
@@ -295,6 +295,12 @@ func (l *CreateOrderDTMLogic) getOrderIDByGID(gid string) (string, error) {
 }
 
 // --- Redis Lua scripts and helpers for stock pre-lock/confirm/revert ---
+// 统一 schema：total / available / pre_locked / used / sync_used / is_invalid
+// TTL 与订单 30 分钟延迟取消对齐；confirm/revert 跟踪 key 保留更久供幂等查询
+
+const stockPreLockTTL = 1800   // 30 分钟，与订单延迟取消对齐
+const stockConfirmTTL = 86400  // 24 小时，供幂等查询
+const stockRevertTTL = 86400   // 24 小时，供幂等查询
 
 const luaPreLockStock = `
 local stockKey = KEYS[1]
@@ -302,7 +308,8 @@ local preLockKey = KEYS[2]
 local confirmKey = KEYS[3]
 local revertKey = KEYS[4]
 local quantity = tonumber(ARGV[1])
--- 幂等检查
+local ttl = tonumber(ARGV[2])
+-- 幂等
 if redis.call("EXISTS", preLockKey) == 1 then
     return 2
 end
@@ -312,38 +319,49 @@ end
 if redis.call("EXISTS", revertKey) == 1 then
     return 4
 end
-local available = tonumber(redis.call("HGET", stockKey, "available"))
--- available 字段不存在表示 Redis 库存未初始化，跳过预扣（由 DB 层兜底）
-if available == nil then
-    return 5
+local isInvalid = redis.call("HGET", stockKey, "is_invalid")
+if isInvalid == "1" then
+    return 6
 end
+local available = redis.call("HGET", stockKey, "available")
+if available == false or available == nil then
+    return 5 -- 未初始化，DB 层兜底
+end
+available = tonumber(available)
 if available < quantity then
     return 0
 end
 redis.call("HINCRBY", stockKey, "available", -quantity)
 redis.call("HINCRBY", stockKey, "pre_locked", quantity)
-redis.call("SETEX", preLockKey, 86400, quantity)
+redis.call("SETEX", preLockKey, ttl, quantity)
 return 1
 `
 
+// Confirm：preLockKey 可能已 TTL 过期，调用方需提供 fallbackQty（订单项中的数量）
 const luaConfirmStock = `
 local stockKey = KEYS[1]
 local preLockKey = KEYS[2]
 local confirmKey = KEYS[3]
 local revertKey = KEYS[4]
+local fallbackQty = tonumber(ARGV[1])
+local ttl = tonumber(ARGV[2])
 if redis.call("EXISTS", confirmKey) == 1 then
-    return 2
+    return 2 -- 已确认（幂等）
 end
 if redis.call("EXISTS", revertKey) == 1 then
-    return 3
+    return 3 -- 已回滚不可确认
 end
 local quantity = tonumber(redis.call("GET", preLockKey))
 if quantity == nil then
-    return 0
+    if fallbackQty == nil or fallbackQty <= 0 then
+        return 0 -- 无 preLock 痕迹且无 fallback
+    end
+    quantity = fallbackQty
 end
 redis.call("HINCRBY", stockKey, "pre_locked", -quantity)
+redis.call("HINCRBY", stockKey, "used", quantity)
 redis.call("DEL", preLockKey)
-redis.call("SETEX", confirmKey, 86400, quantity)
+redis.call("SETEX", confirmKey, ttl, quantity)
 return 1
 `
 
@@ -352,20 +370,31 @@ local stockKey = KEYS[1]
 local preLockKey = KEYS[2]
 local confirmKey = KEYS[3]
 local revertKey = KEYS[4]
+local fallbackQty = tonumber(ARGV[1])
+local ttl = tonumber(ARGV[2])
 if redis.call("EXISTS", revertKey) == 1 then
-    return 2
+    return 2 -- 已回滚（幂等）
 end
 if redis.call("EXISTS", confirmKey) == 1 then
-    return 3
+    return 3 -- 已确认不可回滚
 end
 local quantity = tonumber(redis.call("GET", preLockKey))
+local source = "prelock"
 if quantity == nil then
-    return 0
+    if fallbackQty == nil or fallbackQty <= 0 then
+        -- 无任何痕迹，标记 revertKey 防止后续 Confirm 误触
+        redis.call("SETEX", revertKey, ttl, 0)
+        return 4 -- 空补偿
+    end
+    quantity = fallbackQty
+    source = "fallback"
 end
 redis.call("HINCRBY", stockKey, "available", quantity)
-redis.call("HINCRBY", stockKey, "pre_locked", -quantity)
-redis.call("DEL", preLockKey)
-redis.call("SETEX", revertKey, 86400, quantity)
+if source == "prelock" then
+    redis.call("HINCRBY", stockKey, "pre_locked", -quantity)
+    redis.call("DEL", preLockKey)
+end
+redis.call("SETEX", revertKey, ttl, quantity)
 return 1
 `
 
@@ -386,7 +415,10 @@ func preLockStockByGID(ctx context.Context, rdb *redis.Client, productId int64, 
 	preLockKey := stockPreLockKey(gid, productId)
 	confirmKey := stockConfirmKey(gid, productId)
 	revertKey := stockRevertKey(gid, productId)
-	cmd := rdb.Eval(ctx, luaPreLockStock, []string{stockKey, preLockKey, confirmKey, revertKey}, quantity)
+	cmd := rdb.Eval(ctx, luaPreLockStock,
+		[]string{stockKey, preLockKey, confirmKey, revertKey},
+		quantity, stockPreLockTTL,
+	)
 	code, err := cmd.Int64()
 	if err != nil {
 		return fmt.Errorf("redis eval prelock failed: %w", err)
@@ -404,17 +436,23 @@ func preLockStockByGID(ctx context.Context, rdb *redis.Client, productId int64, 
 		return errors.New("库存已回滚，禁止重复预扣")
 	case 5:
 		return nil // Redis 库存未初始化，跳过预扣（DB 层兜底）
+	case 6:
+		return errors.New("商品不存在")
 	default:
 		return errors.New("未知预扣返回码")
 	}
 }
 
-func confirmPreLockStockByGID(ctx context.Context, rdb *redis.Client, productId int64, gid string) error {
+// confirm/revert 接收 fallbackQty：preLock TTL 过期时使用订单项中的数量补偿
+func confirmPreLockStockByGID(ctx context.Context, rdb *redis.Client, productId int64, gid string, fallbackQty int64) error {
 	stockKey := fmt.Sprintf("product:stock:%d", productId)
 	preLockKey := stockPreLockKey(gid, productId)
 	confirmKey := stockConfirmKey(gid, productId)
 	revertKey := stockRevertKey(gid, productId)
-	cmd := rdb.Eval(ctx, luaConfirmStock, []string{stockKey, preLockKey, confirmKey, revertKey})
+	cmd := rdb.Eval(ctx, luaConfirmStock,
+		[]string{stockKey, preLockKey, confirmKey, revertKey},
+		fallbackQty, stockConfirmTTL,
+	)
 	code, err := cmd.Int64()
 	if err != nil {
 		return fmt.Errorf("redis eval confirm failed: %w", err)
@@ -431,18 +469,21 @@ func confirmPreLockStockByGID(ctx context.Context, rdb *redis.Client, productId 
 	}
 }
 
-func revertPreLockStockByGID(ctx context.Context, rdb *redis.Client, productId int64, gid string) error {
+func revertPreLockStockByGID(ctx context.Context, rdb *redis.Client, productId int64, gid string, fallbackQty int64) error {
 	stockKey := fmt.Sprintf("product:stock:%d", productId)
 	preLockKey := stockPreLockKey(gid, productId)
 	confirmKey := stockConfirmKey(gid, productId)
 	revertKey := stockRevertKey(gid, productId)
-	cmd := rdb.Eval(ctx, luaRevertStock, []string{stockKey, preLockKey, confirmKey, revertKey})
+	cmd := rdb.Eval(ctx, luaRevertStock,
+		[]string{stockKey, preLockKey, confirmKey, revertKey},
+		fallbackQty, stockRevertTTL,
+	)
 	code, err := cmd.Int64()
 	if err != nil {
 		return fmt.Errorf("redis eval revert failed: %w", err)
 	}
 	switch code {
-	case 1, 2, 0, 3:
+	case 1, 2, 3, 4:
 		return nil
 	default:
 		return errors.New("未知回滚返回码")

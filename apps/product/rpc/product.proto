@@ -158,6 +158,7 @@ message UpdateProductStockResponse {
 message CheckAndUpdateStockRequest {
   int64 product_id = 1;
   string request_id = 2;
+  int64 num = 3;
 }
 
 message CheckAndUpdateStockResponse {

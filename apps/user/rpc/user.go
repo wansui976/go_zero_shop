@@ -25,7 +25,7 @@ func main() {
 	var c config.Config
 	conf.MustLoad(*configFile, &c)
 	ctx := svc.NewServiceContext(c)
-	err := snowflake.Init(c.Snowflake.NodeID)
+	err := snowflake.Init(snowflake.ResolveNodeID(c.Snowflake.NodeID))
 	if err != nil {
 		// 初始化失败直接 Panic，因为服务无法生成唯一ID，无法正常工作
 		//fmt.Errorf("snowflake init failed: %v", err)

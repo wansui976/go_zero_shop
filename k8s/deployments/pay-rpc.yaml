@@ -21,7 +21,15 @@ spec:
       - name: pay-rpc
         image: go-zero-shop/pay-rpc:latest
         imagePullPolicy: IfNotPresent
-        command: ["/app/app-binary", "-f", "/app/etc/pay.yaml"]
+        command: ["/app/pay-rpc", "-f", "/app/etc/pay.yaml"]
+        envFrom:
+        - secretRef:
+            name: shop-secrets
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         ports:
         - containerPort: 9101
           name: metrics

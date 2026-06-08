@@ -1,6 +1,7 @@
 # etc/product.yaml
 Name: product.rpc
 ListenOn: 0.0.0.0:8081
+Mode: dev
 
 Etcd:
   Hosts:

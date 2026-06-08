@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/wansui976/go_zero_shop/apps/product/rpc/product"
 	"github.com/wansui976/go_zero_shop/apps/seckill/rpc/internal/svc"
 	"github.com/wansui976/go_zero_shop/apps/seckill/rpc/seckill"
@@ -15,6 +17,21 @@ import (
 	"github.com/zeromicro/go-zero/core/logx"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+)
+
+const kafkaPushTimeout = 3 * time.Second
+
+var (
+	seckillKafkaPushCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "seckill_kafka_push_total",
+		Help: "Seckill batcher Kafka push outcomes",
+	}, []string{"status"})
+
+	seckillKafkaPushDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "seckill_kafka_push_seconds",
+		Help:    "Seckill batcher Kafka push latency (seconds)",
+		Buckets: []float64{0.01, 0.05, 0.1, 0.3, 1, 3, 5, 10},
+	})
 )
 
 type SeckillOrderLogic struct {
@@ -88,10 +105,22 @@ func NewSeckillOrderLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Seck
 			logx.Errorf("Batcher.Do json.Marshal msgs: %v error: %v", msgs, err)
 			return
 		}
-		// 3. 投递到Kafka（异步处理，不阻塞当前批量逻辑）
-		if err = s.svcCtx.KafkaPusher.Push(ctx, string(kd)); err != nil {
-			logx.Errorf("KafkaPusher.Push kd: %s error: %v", string(kd), err)
+		// 3. 投递到 Kafka，加超时保护：Kafka 卡顿时不让 batcher worker 永久阻塞
+		pushStart := time.Now()
+		pushCtx, cancel := context.WithTimeout(ctx, kafkaPushTimeout)
+		err = s.svcCtx.KafkaPusher.Push(pushCtx, string(kd))
+		cancel()
+		seckillKafkaPushDuration.Observe(time.Since(pushStart).Seconds())
+		if err != nil {
+			outcome := "failed"
+			if pushCtx.Err() == context.DeadlineExceeded {
+				outcome = "timeout"
+			}
+			seckillKafkaPushCounter.WithLabelValues(outcome).Inc()
+			logx.Errorf("KafkaPusher.Push outcome=%s msgs=%d err=%v", outcome, len(msgs), err)
+			return
 		}
+		seckillKafkaPushCounter.WithLabelValues("success").Inc()
 	}
 
 	// 4. 启动批量组件：启动10个工作协程，开始监听批量通道
@@ -104,6 +133,7 @@ func NewSeckillOrderLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Seck
 	}()
 
 	// 5. 组装并返回逻辑实例
+	s.batcher = b
 	return s
 }
 

@@ -82,9 +82,25 @@ func (l *ProductsLogic) Products(in *product.ProductRequest) (*product.ProductRe
 	}
 
 	for _, p := range ps {
+		brief := ""
+		if p.Brief.Valid {
+			brief = p.Brief.String
+		}
+		img := ""
+		if p.ImageUrl.Valid {
+			img = p.ImageUrl.String
+		}
 		products[p.Id] = &product.ProductItem{
-			Id:   p.Id,
-			Name: p.Name,
+			Id:         p.Id,
+			Name:       p.Name,
+			Brief:      brief,
+			ImageUrl:   img,
+			Price:      p.Price,
+			Stock:      p.Stock,
+			CategoryId: p.CategoryId.Int64,
+			BrandId:    p.BrandId.Int64,
+			Status:     product.ProductStatus(p.Status),
+			CreateTime: p.CreateTime.Unix(),
 		}
 	}
 

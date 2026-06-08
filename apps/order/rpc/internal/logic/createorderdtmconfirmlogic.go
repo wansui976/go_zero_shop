@@ -81,7 +81,7 @@ func (l *CreateOrderDTMConfirmLogic) CreateOrderDTMConfirm(in *order.CreateOrder
 				return fmt.Errorf("查询订单项失败(orderId:%s): %w", in.OrderId, err)
 			}
 			for _, item := range items {
-				if err := confirmPreLockStockByGID(l.ctx, l.svcCtx.Rdb, item.ProductId, in.Gid); err != nil {
+				if err := confirmPreLockStockByGID(l.ctx, l.svcCtx.Rdb, item.ProductId, in.Gid, item.Quantity); err != nil {
 					return fmt.Errorf("确认预扣库存失败(orderId:%s, productId:%d): %w", in.OrderId, item.ProductId, err)
 				}
 			}

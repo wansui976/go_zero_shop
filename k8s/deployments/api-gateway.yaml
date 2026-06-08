@@ -23,7 +23,14 @@ spec:
         image: go-zero-shop/api-gateway:latest
         ports:
         - containerPort: 8888
+        envFrom:
+        - secretRef:
+            name: shop-secrets
         env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         - name: POD_IP
           valueFrom:
             fieldRef:
@@ -67,7 +74,7 @@ spec:
         command: ['sh', '-c', 'until nc -z order-rpc-service 9002; do echo waiting for order-rpc; sleep 2; done;']
       - name: wait-for-reply-rpc
         image: busybox:1.28
-        command: ['sh', '-c', 'until nc -z reply-rpc-service 9008; do echo waiting for reply-rpc; sleep 2; done;']
+        command: ['sh', '-c', 'until nc -z reply-rpc 8083; do echo waiting for reply-rpc; sleep 2; done;']
 ---
 apiVersion: v1
 kind: Service

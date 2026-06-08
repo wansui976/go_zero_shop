@@ -6,7 +6,7 @@ metadata:
 data:
   search.yaml: |
     Name: search.rpc
-    ListenOn: 0.0.0.0:8083
+    ListenOn: 0.0.0.0:8086
     Etcd:
       Hosts:
       - etcd:2379

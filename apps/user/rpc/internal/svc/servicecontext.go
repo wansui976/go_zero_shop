@@ -7,6 +7,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/wansui976/go_zero_shop/apps/user/rpc/internal/config"
 	"github.com/wansui976/go_zero_shop/apps/user/rpc/model"
+	"github.com/wansui976/go_zero_shop/pkg/envcfg"
 	"github.com/zeromicro/go-zero/core/stores/sqlx"
 )
 
@@ -18,6 +19,16 @@ type ServiceContext struct {
 }
 
 func NewServiceContext(c config.Config) *ServiceContext {
+	// 敏感配置从 env 覆盖（K8s Secret 注入）
+	envcfg.MustNonEmpty("MYSQL_PASSWORD")
+	envcfg.MustNonEmpty("USER_JWT_SALT")
+	c.Mysql.DataSource = envcfg.InjectMySQLDSNPassword(c.Mysql.DataSource, "MYSQL_PASSWORD")
+	envcfg.OverrideCacheConf(c.CacheRedis, "REDIS_PASSWORD")
+	if v := envcfg.Getenv("REDIS_PASSWORD", ""); v != "" {
+		c.BizRedis.Pass = v
+	}
+	c.Salt = envcfg.OverrideString(c.Salt, "USER_JWT_SALT")
+
 	sqlConn := sqlx.NewMysql(c.Mysql.DataSource)
 
 	// Redis（用于业务版本号 INCR）

@@ -12,6 +12,7 @@ import (
 	"github.com/wansui976/go_zero_shop/apps/product/rpc/internal/cache"
 	"github.com/wansui976/go_zero_shop/apps/product/rpc/internal/config"
 	"github.com/wansui976/go_zero_shop/apps/product/rpc/internal/model"
+	"github.com/wansui976/go_zero_shop/pkg/envcfg"
 	"github.com/wansui976/go_zero_shop/pkg/orm"
 	"github.com/zeromicro/go-zero/core/collection"
 	"github.com/zeromicro/go-zero/core/stores/redis"
@@ -36,6 +37,14 @@ type ServiceContext struct {
 }
 
 func NewServiceContext(c config.Config) *ServiceContext {
+	envcfg.MustNonEmpty("MYSQL_PASSWORD")
+	c.DataSource = envcfg.InjectMySQLDSNPassword(c.DataSource, "MYSQL_PASSWORD")
+	envcfg.OverrideCacheConf(c.CacheRedis, "REDIS_PASSWORD")
+	envcfg.OverrideRedisConf(&c.BizRedis, "REDIS_PASSWORD")
+	if v := envcfg.Getenv("REDIS_PASSWORD", ""); v != "" {
+		c.AsynqRedis.Pass = v
+	}
+
 	conn := sqlx.NewMysql(c.DataSource)
 	db, err := conn.RawDB()
 	if err != nil {
@@ -97,18 +106,14 @@ func NewServiceContext(c config.Config) *ServiceContext {
 			if val, err := svc.BizRedis.HgetCtx(ctx, stockKey, "available"); err == nil && val != "" {
 				continue
 			}
-			_ = svc.BizRedis.HmsetCtx(ctx, stockKey, map[string]string{
-				"total":      fmt.Sprintf("%d", p.Stock),
-				"available":  fmt.Sprintf("%d", p.Stock),
-				"pre_locked": "0",
-				"sold":       fmt.Sprintf("%d", p.Sales),
-			})
 			// 使用随机过期时间，避免缓存雪崩：基础7天，抖动0-1天
 			_ = cache.SetHashWithRandomExpire(ctx, svc.BizRedis, stockKey, map[string]string{
 				"total":      fmt.Sprintf("%d", p.Stock),
 				"available":  fmt.Sprintf("%d", p.Stock),
 				"pre_locked": "0",
-				"sold":       fmt.Sprintf("%d", p.Sales),
+				"used":       "0",
+				"sync_used":  "0",
+				"is_invalid": "0",
 			}, 7*24*time.Hour, 24*3600)
 			// add to bloom
 			if svc.Bloom != nil {

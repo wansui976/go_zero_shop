@@ -7,6 +7,8 @@
 
 # Go build cache
 .gocache/
+.gobin/
+.protoc/
 
 # Compiled binaries
 apps/app/api/api

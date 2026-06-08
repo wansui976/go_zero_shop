@@ -32,5 +32,5 @@ type Config struct {
 		PublicKey   string `json:"publicKey"`
 		NotifyURL   string `json:"notifyURL"`
 		ReturnURL   string `json:"returnURL"`
-	} `json:"Alipay`
+	} `json:"Alipay"`
 }

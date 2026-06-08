@@ -1,5 +1,6 @@
 Name: search.rpc
-ListenOn: 0.0.0.0:8083
+ListenOn: 0.0.0.0:8086
+Mode: dev
 Etcd:
   Hosts:
   - 127.0.0.1:2379

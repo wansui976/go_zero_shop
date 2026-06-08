@@ -67,7 +67,7 @@ func (l *CreateOrderDTMRevertLogic) CreateOrderDTMRevert(in *order.AddOrderReque
 				// Try 未创建订单，仍需按请求释放预扣库存（幂等）
 				if l.svcCtx != nil && l.svcCtx.Rdb != nil {
 					for _, item := range in.Items {
-						_ = revertPreLockStockByGID(l.ctx, l.svcCtx.Rdb, item.ProductId, in.Gid)
+						_ = revertPreLockStockByGID(l.ctx, l.svcCtx.Rdb, item.ProductId, in.Gid, item.Quantity)
 					}
 				}
 				logx.Infof("CreateOrderDTMRevert: 未找到订单(gid:%s)，按请求释放预扣库存完成", in.Gid)
@@ -119,7 +119,7 @@ func (l *CreateOrderDTMRevertLogic) CreateOrderDTMRevert(in *order.AddOrderReque
 				}
 			}
 			for _, item := range items {
-				if err := revertPreLockStockByGID(l.ctx, l.svcCtx.Rdb, item.ProductId, in.Gid); err != nil {
+				if err := revertPreLockStockByGID(l.ctx, l.svcCtx.Rdb, item.ProductId, in.Gid, item.Quantity); err != nil {
 					return fmt.Errorf("回滚预扣库存失败(productId=%d): %w", item.ProductId, err)
 				}
 			}

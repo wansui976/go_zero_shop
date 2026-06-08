@@ -18,9 +18,10 @@ type OperationProductsLogic struct {
 
 func NewOperationProductsLogic(ctx context.Context, svcCtx *svc.ServiceContext) *OperationProductsLogic {
 	return &OperationProductsLogic{
-		ctx:    ctx,
-		svcCtx: svcCtx,
-		Logger: logx.WithContext(ctx),
+		ctx:              ctx,
+		svcCtx:           svcCtx,
+		productListLogic: NewProductListLogic(ctx, svcCtx),
+		Logger:           logx.WithContext(ctx),
 	}
 }
 
@@ -41,7 +42,7 @@ func (l *OperationProductsLogic) OperationProducts(in *product.OperationProducts
 		return nil, err
 	}
 
-	var pids []int64
+	pids := make([]int64, 0, len(pos))
 	for _, p := range pos {
 		pids = append(pids, p.ProductId)
 	}
@@ -51,13 +52,29 @@ func (l *OperationProductsLogic) OperationProducts(in *product.OperationProducts
 		return nil, err
 	}
 
-	var pItems []*product.ProductItem
+	pItems := make([]*product.ProductItem, 0, len(products))
 	for _, p := range products {
+		brief := ""
+		if p.Brief.Valid {
+			brief = p.Brief.String
+		}
+		img := ""
+		if p.ImageUrl.Valid {
+			img = p.ImageUrl.String
+		}
 		pItems = append(pItems, &product.ProductItem{
-			Id:   p.Id,
-			Name: p.Name,
+			Id:         p.Id,
+			Name:       p.Name,
+			Brief:      brief,
+			ImageUrl:   img,
+			Price:      p.Price,
+			Stock:      p.Stock,
+			CategoryId: p.CategoryId.Int64,
+			BrandId:    p.BrandId.Int64,
+			Status:     product.ProductStatus(p.Status),
+			CreateTime: p.CreateTime.Unix(),
 		})
 	}
 	l.svcCtx.LocalCache.Set(operationProductsKey, pItems)
-	return &product.OperationProductsResponse{}, nil
+	return &product.OperationProductsResponse{Products: pItems}, nil
 }

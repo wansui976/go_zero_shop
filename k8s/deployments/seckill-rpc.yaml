@@ -51,6 +51,11 @@ spec:
                 name: shop-config
             - secretRef:
                 name: shop-secrets
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
           resources:
             requests:
               cpu: "200m"

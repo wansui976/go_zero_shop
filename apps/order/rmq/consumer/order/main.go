@@ -20,7 +20,7 @@ import (
 // 订单创建事件
 type OrderCreatedEvent struct {
 	Event   string      `json:"event"`
-	OrderID int64       `json:"order_id"`
+	OrderID string      `json:"order_id"`
 	UserID  int64       `json:"user_id"`
 	Time    time.Time   `json:"time"`
 	Items   []OrderItem `json:"items"`
@@ -45,7 +45,10 @@ type OrderConfig struct {
 }
 
 const (
-	ORDER_QUEUE = "order_create_queue"
+	ORDER_QUEUE     = "order_create_queue"
+	ORDER_DLQ       = "order_create_dlq"
+	maxRetryCount   = 5
+	retryCounterTTL = 24 * 3600
 )
 
 // ==================== Prometheus 监控指标 ====================
@@ -68,6 +71,12 @@ var (
 		Name: "order_consumer_queue_depth",
 		Help: "Current depth of order create queue",
 	})
+
+	// 投递到死信队列计数
+	orderDLQCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "order_consumer_dlq_total",
+		Help: "Total number of order messages moved to DLQ",
+	}, []string{"reason"})
 )
 
 func main() {
@@ -97,9 +106,13 @@ func main() {
 		Pass: c.Redis.Pass,
 	})
 
-	// 声明队列
+	// 声明主队列与死信队列
 	if err := rabbitMQ.DeclareQueue(ORDER_QUEUE, true, false, false, false, nil); err != nil {
-		logx.Errorf("声明队列失败: %v", err)
+		logx.Errorf("声明主队列失败: %v", err)
+		return
+	}
+	if err := rabbitMQ.DeclareQueue(ORDER_DLQ, true, false, false, false, nil); err != nil {
+		logx.Errorf("声明死信队列失败: %v", err)
 		return
 	}
 
@@ -135,13 +148,80 @@ func main() {
 		if err := handleOrderCreatedEvent(ctx, redisClient, msg); err != nil {
 			logx.Errorf("处理消息失败: %v", err)
 			orderConsumeCounter.WithLabelValues("process", "failed").Inc()
-			msg.Nack(false, true) // 重新入队
+			handleProcessFailure(rabbitMQ, redisClient, msg, err)
 		} else {
-			msg.Ack(false)
+			_ = msg.Ack(false)
 			orderConsumeCounter.WithLabelValues("process", "success").Inc()
+			// 清理重试计数器（成功后释放 Redis key）
+			if msg.Redelivered {
+				if evt := parseOrderEvent(msg.Body); evt != nil && evt.OrderID != "" {
+					_, _ = redisClient.Del("order_event:retry:" + evt.OrderID)
+				}
+			}
 		}
 		orderConsumeDuration.Observe(time.Since(start).Seconds())
 	}
+}
+
+// handleProcessFailure 决定失败消息是重新入队还是投递死信队列
+// - 解析失败：直接 DLQ（无法重试）
+// - 业务失败：Redis 计数器累加，未达上限 Nack(requeue) 重新入队；达上限投递 DLQ + Ack
+func handleProcessFailure(rabbitMQ *mq.RabbitMQ, rdb *redis.Redis, msg amqp.Delivery, processErr error) {
+	// 优先用 OrderID 作为重试键；解析失败时直接 DLQ
+	var event OrderCreatedEvent
+	if err := json.Unmarshal(msg.Body, &event); err != nil || event.OrderID == "" {
+		publishToDLQ(rabbitMQ, msg, "parse_error")
+		return
+	}
+
+	retryKey := fmt.Sprintf("order_event:retry:%s", event.OrderID)
+	count, err := rdb.Incr(retryKey)
+	if err != nil {
+		logx.Errorf("retry counter incr 失败: OrderID=%s, err=%v；保守起见走 DLQ", event.OrderID, err)
+		publishToDLQ(rabbitMQ, msg, "counter_error")
+		return
+	}
+	if count == 1 {
+		_ = rdb.Expire(retryKey, retryCounterTTL)
+	}
+
+	if count >= maxRetryCount {
+		logx.Errorf("重试达到上限 OrderID=%s count=%d，投递 DLQ; lastErr=%v", event.OrderID, count, processErr)
+		publishToDLQ(rabbitMQ, msg, "max_retries")
+		_, _ = rdb.Del(retryKey)
+		return
+	}
+	logx.Infof("处理失败重试 OrderID=%s count=%d/%d", event.OrderID, count, maxRetryCount)
+	_ = msg.Nack(false, true)
+}
+
+func parseOrderEvent(body []byte) *OrderCreatedEvent {
+	var evt OrderCreatedEvent
+	if err := json.Unmarshal(body, &evt); err != nil {
+		return nil
+	}
+	return &evt
+}
+
+func publishToDLQ(rabbitMQ *mq.RabbitMQ, msg amqp.Delivery, reason string) {
+	pub := amqp.Publishing{
+		ContentType:  msg.ContentType,
+		Body:         msg.Body,
+		DeliveryMode: amqp.Persistent,
+		Headers: amqp.Table{
+			"x-failure-reason":  reason,
+			"x-original-queue":  ORDER_QUEUE,
+			"x-failed-at":       time.Now().UnixMilli(),
+		},
+	}
+	if err := rabbitMQ.Publish("", ORDER_DLQ, false, false, pub); err != nil {
+		// 发布 DLQ 都失败时，最后兜底：requeue 一次给运维介入，但不再无限循环
+		logx.Errorf("DLQ 发布失败 reason=%s, err=%v；nack(requeue=false) 丢弃", reason, err)
+		_ = msg.Nack(false, false)
+		return
+	}
+	orderDLQCounter.WithLabelValues(reason).Inc()
+	_ = msg.Ack(false)
 }
 
 // monitorOrderQueueDepth 监控订单队列深度
@@ -172,14 +252,14 @@ func handleOrderCreatedEvent(ctx context.Context, rdb *redis.Redis, msg amqp.Del
 		return fmt.Errorf("解析消息失败: %w", err)
 	}
 
-	logx.Infof("收到订单创建事件: OrderID=%d, UserID=%d, Time=%v",
+	logx.Infof("收到订单创建事件: OrderID=%s, UserID=%d, Time=%v",
 		event.OrderID, event.UserID, event.Time)
 
 	// 幂等性检查 - 使用 OrderID 作为 key
-	key := fmt.Sprintf("order_event:%d", event.OrderID)
+	key := fmt.Sprintf("order_event:%s", event.OrderID)
 	exists, _ := rdb.Exists(key)
 	if exists {
-		logx.Infof("重复的订单事件，跳过: OrderID=%d", event.OrderID)
+		logx.Infof("重复的订单事件，跳过: OrderID=%s", event.OrderID)
 		orderConsumeCounter.WithLabelValues("idempotent", "skipped").Inc()
 		return nil
 	}
@@ -188,13 +268,13 @@ func handleOrderCreatedEvent(ctx context.Context, rdb *redis.Redis, msg amqp.Del
 
 	// 缓存订单商品快照，供延迟取消链路回补库存使用。
 	if err := cacheOrderItemsSnapshot(rdb, event.OrderID, event.Items); err != nil {
-		logx.Errorf("缓存订单商品快照失败: OrderID=%d, err=%v", event.OrderID, err)
+		logx.Errorf("缓存订单商品快照失败: OrderID=%s, err=%v", event.OrderID, err)
 	}
 
 	// 业务处理逻辑
 	start := time.Now()
 	defer func() {
-		logx.Infof("订单事件处理完成: OrderID=%d, 耗时=%v", event.OrderID, time.Since(start))
+		logx.Infof("订单事件处理完成: OrderID=%s, 耗时=%v", event.OrderID, time.Since(start))
 	}()
 
 	// 1. 发送订单确认通知
@@ -226,7 +306,7 @@ func handleOrderCreatedEvent(ctx context.Context, rdb *redis.Redis, msg amqp.Del
 
 // sendOrderConfirmationNotification 发送订单确认通知
 func sendOrderConfirmationNotification(ctx context.Context, event *OrderCreatedEvent) error {
-	logx.Infof("发送订单确认通知给用户: UserID=%d, OrderID=%d", event.UserID, event.OrderID)
+	logx.Infof("发送订单确认通知给用户: UserID=%d, OrderID=%s", event.UserID, event.OrderID)
 
 	// TODO: 实际项目中调用通知服务
 	// 1. 发送短信通知
@@ -236,13 +316,13 @@ func sendOrderConfirmationNotification(ctx context.Context, event *OrderCreatedE
 	// emailClient.Send(ctx, &email.Request{Email: user.Email, Subject: "订单确认", Body: ...})
 
 	// 3. 记录通知日志
-	logx.Infof("通知已发送: UserID=%d, OrderID=%d", event.UserID, event.OrderID)
+	logx.Infof("通知已发送: UserID=%d, OrderID=%s", event.UserID, event.OrderID)
 	return nil
 }
 
 // updateOrderStatistics 更新订单统计数据
 func updateOrderStatistics(ctx context.Context, event *OrderCreatedEvent) error {
-	logx.Infof("更新订单统计数据: OrderID=%d, Items=%d", event.OrderID, len(event.Items))
+	logx.Infof("更新订单统计数据: OrderID=%s, Items=%d", event.OrderID, len(event.Items))
 
 	// TODO: 实际项目中更新 Redis 统计
 	// 1. 日订单数 +1
@@ -259,13 +339,13 @@ func updateOrderStatistics(ctx context.Context, event *OrderCreatedEvent) error 
 	// 4. 销售额统计
 	// TODO: 计算订单金额并累加
 
-	logx.Infof("统计更新完成: OrderID=%d", event.OrderID)
+	logx.Infof("统计更新完成: OrderID=%s", event.OrderID)
 	return nil
 }
 
 // reserveInventory 预留商品库存
 func reserveInventory(ctx context.Context, event *OrderCreatedEvent) error {
-	logx.Infof("预留商品库存: OrderID=%d, Items=%d", event.OrderID, len(event.Items))
+	logx.Infof("预留商品库存: OrderID=%s, Items=%d", event.OrderID, len(event.Items))
 
 	// TODO: 实际项目中调用库存服务预留库存
 	// 1. 检查库存是否充足
@@ -280,7 +360,7 @@ func reserveInventory(ctx context.Context, event *OrderCreatedEvent) error {
 	return nil
 }
 
-func cacheOrderItemsSnapshot(rdb *redis.Redis, orderID int64, items []OrderItem) error {
+func cacheOrderItemsSnapshot(rdb *redis.Redis, orderID string, items []OrderItem) error {
 	if rdb == nil || len(items) == 0 {
 		return nil
 	}
@@ -288,7 +368,7 @@ func cacheOrderItemsSnapshot(rdb *redis.Redis, orderID int64, items []OrderItem)
 	if err != nil {
 		return err
 	}
-	key := fmt.Sprintf("order:items_snapshot:%d", orderID)
+	key := fmt.Sprintf("order:items_snapshot:%s", orderID)
 	// 超过延迟队列 TTL（30 分钟）即可，取 48 小时便于补偿排查。
 	return rdb.Setex(key, string(data), 48*3600)
 }

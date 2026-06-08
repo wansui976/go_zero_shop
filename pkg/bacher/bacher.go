@@ -27,7 +27,7 @@ type options struct {
 	interval time.Duration // 时间间隔（不足批量大小时，多久触发一次处理）
 }
 
-func (o options) check() {
+func (o *options) check() {
 	if o.size <= 0 {
 		o.size = 100
 	}

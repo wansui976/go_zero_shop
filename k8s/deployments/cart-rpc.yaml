@@ -21,7 +21,15 @@ spec:
       - name: cart-rpc
         image: go-zero-shop/cart-rpc:latest
         imagePullPolicy: IfNotPresent
-        command: ["/app/app-binary", "-f", "/app/etc/cart.yaml"]
+        command: ["/app/cart-rpc", "-f", "/app/etc/cart.yaml"]
+        envFrom:
+        - secretRef:
+            name: shop-secrets
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         ports:
         - containerPort: 9101
           name: metrics

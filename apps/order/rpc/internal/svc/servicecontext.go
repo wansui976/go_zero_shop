@@ -12,6 +12,7 @@ import (
 	"github.com/wansui976/go_zero_shop/apps/product/rpc/product"
 	"github.com/wansui976/go_zero_shop/apps/product/rpc/productclient"
 	"github.com/wansui976/go_zero_shop/apps/user/rpc/userclient"
+	"github.com/wansui976/go_zero_shop/pkg/envcfg"
 	"github.com/wansui976/go_zero_shop/pkg/mq"
 	"github.com/wansui976/go_zero_shop/pkg/snowflake"
 
@@ -36,11 +37,16 @@ type ServiceContext struct {
 }
 
 func NewServiceContext(c config.Config) *ServiceContext {
+	envcfg.MustNonEmpty("MYSQL_PASSWORD")
+	c.DataSource = envcfg.InjectMySQLDSNPassword(c.DataSource, "MYSQL_PASSWORD")
+	envcfg.OverrideCacheConf(c.CacheRedis, "REDIS_PASSWORD")
+	envcfg.OverrideRedisConf(&c.BizRedis, "REDIS_PASSWORD")
+
 	db, err := sqlx.NewMysql(c.DataSource).RawDB()
 	if err != nil {
 		panic(fmt.Sprintf("init db dailed:%v", err))
 	}
-	if err := snowflake.Init(1); err != nil {
+	if err := snowflake.Init(snowflake.ResolveNodeID(1)); err != nil {
 		panic("snowflake 初始化失败: " + err.Error())
 	}
 

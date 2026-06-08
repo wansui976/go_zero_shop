@@ -1,15 +1,36 @@
-# Reply RPC服务Dockerfile
-FROM golang:1.19-alpine AS builder
+# Reply RPC Service Dockerfile
+FROM golang:1.24-alpine AS builder
 
-WORKDIR /app
+ARG CGO_ENABLED=0
+ARG GOOS=linux
+
+RUN apk add --no-cache git ca-certificates tzdata
+ENV GOPROXY=https://goproxy.cn,direct
+
+WORKDIR /build
+
+COPY go.mod go.sum ./
+RUN go mod download
+
 COPY . .
-RUN go mod tidy
-RUN CGO_ENABLED=0 GOOS=linux go build -o reply-rpc apps/reply/rpc/reply.go
 
-FROM alpine:latest
-RUN apk --no-cache add ca-certificates tzdata
+RUN go build -ldflags="-s -w" -o /app/reply-rpc ./apps/reply/rpc/reply.go
+
+FROM alpine:3.19
+
+RUN apk add --no-cache ca-certificates tzdata
+ENV TZ=Asia/Shanghai
+
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
 WORKDIR /app
+
 COPY --from=builder /app/reply-rpc .
-COPY --from=builder /app/apps/reply/rpc/etc ./etc
-EXPOSE 9008
-CMD ["./reply-rpc", "-f", "etc/reply.yaml"]
+COPY --from=builder /build/apps/reply/rpc/etc/reply.yaml ./etc/
+
+RUN chown -R appuser:appgroup /app
+USER appuser
+
+EXPOSE 8083
+
+CMD ["./reply-rpc", "-f", "./etc/reply.yaml"]
